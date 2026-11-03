@@ -14,9 +14,9 @@ class CompanySettingController extends Controller
     /**
      * Get company profile & invoice settings.
      */
-    public function show(): JsonResponse
+    public function show(Request $request): JsonResponse
     {
-        $settings = CompanySetting::getSettings();
+        $settings = CompanySetting::getSettings($request->user()?->company_id);
 
         return response()->json([
             'status' => 'success',
@@ -30,7 +30,7 @@ class CompanySettingController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
-        $settings = CompanySetting::getSettings();
+        $settings = CompanySetting::getSettings($request->user()?->company_id);
 
         $validated = $request->validate([
             'company_name' => ['sometimes', 'string', 'max:255'],
@@ -43,6 +43,7 @@ class CompanySettingController extends Controller
             'state_code' => ['sometimes', 'string', 'max:10'],
             'gstin' => ['nullable', 'string', 'max:50'],
             'pan' => ['nullable', 'string', 'max:50'],
+            'fssai_no' => ['nullable', 'string', 'max:50'],
             'bank_name' => ['nullable', 'string', 'max:255'],
             'bank_branch' => ['nullable', 'string', 'max:255'],
             'account_number' => ['nullable', 'string', 'max:100'],
@@ -52,8 +53,8 @@ class CompanySettingController extends Controller
             'currency_code' => ['sometimes', 'string', 'max:10'],
             'default_tax_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'logo_path' => ['nullable', 'string', 'max:255'],
-            'invoice_prefix' => ['sometimes', 'string', 'max:20'],
-            'invoice_number_padding' => ['sometimes', 'integer', 'min:1', 'max:10'],
+            'invoice_prefix' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'invoice_number_padding' => ['sometimes', 'integer', 'min:0', 'max:10'],
             'next_invoice_number' => ['sometimes', 'integer', 'min:1'],
             'invoice_footer_notes' => ['nullable', 'string'],
         ]);
@@ -92,7 +93,7 @@ class CompanySettingController extends Controller
             ],
         ]);
 
-        $settings = CompanySetting::getSettings();
+        $settings = CompanySetting::getSettings($request->user()?->company_id);
 
         // Remove old custom logo from storage if exists
         if ($settings->logo_path && ! str_starts_with($settings->logo_path, 'http')) {
@@ -123,9 +124,9 @@ class CompanySettingController extends Controller
     /**
      * Remove custom company logo.
      */
-    public function deleteLogo(): JsonResponse
+    public function deleteLogo(Request $request): JsonResponse
     {
-        $settings = CompanySetting::getSettings();
+        $settings = CompanySetting::getSettings($request->user()?->company_id);
 
         if ($settings->logo_path && ! str_starts_with($settings->logo_path, 'http')) {
             if (Storage::disk('public')->exists($settings->logo_path)) {
@@ -200,7 +201,7 @@ class CompanySettingController extends Controller
                 'Content-Type' => $mime,
                 'Access-Control-Allow-Origin' => '*',
                 'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
-                'Cache-Control' => 'public, max-age=86400',
+                'Cache-Control' => 'no-cache, private, must-revalidate',
             ]);
         }
 
@@ -223,7 +224,7 @@ class CompanySettingController extends Controller
                 'Content-Type' => $mime,
                 'Access-Control-Allow-Origin' => '*',
                 'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
-                'Cache-Control' => 'public, max-age=86400',
+                'Cache-Control' => 'no-cache, private, must-revalidate',
             ]);
         }
 

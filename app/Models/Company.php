@@ -41,7 +41,8 @@ class Company extends Model
             return $this->logo_path;
         }
 
-        return url("api/v1/public/company-logo/{$this->id}");
+        $filename = basename($this->logo_path);
+        return url("api/v1/public/logo-file/{$filename}");
     }
 
     public function plan(): BelongsTo

@@ -24,6 +24,7 @@ class CompanySetting extends Model
         'state_code',
         'gstin',
         'pan',
+        'fssai_no',
         'bank_name',
         'bank_branch',
         'account_number',
@@ -57,8 +58,8 @@ class CompanySetting extends Model
             return $this->logo_path;
         }
 
-        $targetId = $this->company_id ?: 1;
-        return url("api/v1/public/company-logo/{$targetId}");
+        $filename = basename($this->logo_path);
+        return url("api/v1/public/logo-file/{$filename}");
     }
 
     /**

@@ -23,6 +23,28 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class DealerLedgerReportService
 {
     /**
+     * Determines if a product is a 20L / refill water cane (Dealer Ledger = With Refill only).
+     */
+    public function isRefillCaneProduct(?int $pId, string $prodName, string $prodSku = '', string $prodUnit = '', ?int $caneProductId = null): bool
+    {
+        return ($caneProductId && $pId == $caneProductId) ||
+            (stripos($prodName, '20L') !== false) ||
+            (stripos($prodName, '20 L') !== false) ||
+            (stripos($prodName, '20-Lit') !== false) ||
+            (stripos($prodName, '20Lit') !== false) ||
+            (stripos($prodName, '20 Litre') !== false) ||
+            (stripos($prodName, 'refill') !== false && stripos($prodName, '20') !== false) ||
+            (stripos($prodName, 'Can') !== false) ||
+            (stripos($prodName, 'Cane') !== false) ||
+            (stripos($prodName, 'Jar') !== false) ||
+            (stripos($prodUnit, 'Can') !== false) ||
+            (stripos($prodUnit, 'Cane') !== false) ||
+            (stripos($prodUnit, 'Jar') !== false) ||
+            (stripos($prodSku, '20L') !== false) ||
+            (stripos($prodSku, 'CAN') !== false);
+    }
+
+    /**
      * Generates complete monthly dealer ledger matrix data matching Excel layout.
      */
     public function generateMonthlyLedger(int $year, int $month, array $dealerIds = [], ?int $caneProductId = null): array
@@ -65,10 +87,24 @@ class DealerLedgerReportService
                 }
             }
 
-            $preDebit = (float) DealerSupply::where('dealer_id', $dealer->id)
+            $preSupplies = DealerSupply::with('items.product')
+                ->where('dealer_id', $dealer->id)
                 ->where('status', 'delivered')
                 ->where('supply_date', '<', $startDate->toDateString())
-                ->sum('total_amount');
+                ->get();
+
+            $preDebit = 0.0;
+            foreach ($preSupplies as $ps) {
+                foreach ($ps->items as $it) {
+                    $p = $it->product;
+                    $pName = $p?->name ?? $it->notes ?? '';
+                    $pSku = $p?->sku ?? '';
+                    $pUnit = $it->unit ?? $p?->unit ?? '';
+                    if ($this->isRefillCaneProduct($it->product_id, $pName, $pSku, $pUnit, $caneProductId)) {
+                        $preDebit += (float) ($it->line_total ?? $it->total_amount ?? ($it->quantity * $it->unit_price));
+                    }
+                }
+            }
 
             $preCredit = (float) DealerPayment::where('dealer_id', $dealer->id)
                 ->where('status', 'completed')
@@ -115,8 +151,6 @@ class DealerLedgerReportService
                 ];
             }
 
-            $dailySupplies[$dateStr][$dId]['filling_amount'] += (float) $supply->total_amount;
-
             foreach ($supply->items as $item) {
                 $pId = $item->product_id;
                 $qty = (int) $item->quantity;
@@ -125,38 +159,26 @@ class DealerLedgerReportService
                 $prodSku = $prod?->sku ?? '';
                 $prodUnit = $item->unit ?? $prod?->unit ?? 'Nos';
 
-                if (! isset($productBreakdownTotals[$pId])) {
-                    $productBreakdownTotals[$pId] = [
-                        'product_id' => $pId,
-                        'name' => $prodName,
-                        'sku' => $prodSku,
-                        'unit' => $prodUnit,
-                        'total_quantity' => 0,
-                        'total_amount' => 0.0,
-                    ];
-                }
-                $productBreakdownTotals[$pId]['total_quantity'] += $qty;
-                $productBreakdownTotals[$pId]['total_amount'] += (float) $item->line_total;
-
-                // Check if this item is considered 20L / refill water cane
-                $isCane = ($caneProductId && $pId == $caneProductId) ||
-                    (stripos($prodName, '20L') !== false) ||
-                    (stripos($prodName, '20 L') !== false) ||
-                    (stripos($prodName, '20-Lit') !== false) ||
-                    (stripos($prodName, '20Lit') !== false) ||
-                    (stripos($prodName, '20 Litre') !== false) ||
-                    (stripos($prodName, 'refill') !== false && stripos($prodName, '20') !== false) ||
-                    (stripos($prodName, 'Can') !== false) ||
-                    (stripos($prodName, 'Cane') !== false) ||
-                    (stripos($prodName, 'Jar') !== false) ||
-                    (stripos($prodUnit, 'Can') !== false) ||
-                    (stripos($prodUnit, 'Cane') !== false) ||
-                    (stripos($prodUnit, 'Jar') !== false) ||
-                    (stripos($prodSku, '20L') !== false) ||
-                    (stripos($prodSku, 'CAN') !== false);
+                // Check if this item is considered 20L / refill water cane (Dealer Ledger = With Refill only)
+                $isCane = $this->isRefillCaneProduct($pId, $prodName, $prodSku, $prodUnit, $caneProductId);
 
                 if ($isCane) {
+                    $itemAmount = (float) ($item->line_total ?? $item->total_amount ?? ($qty * $item->unit_price));
                     $dailySupplies[$dateStr][$dId]['cane_qty'] += $qty;
+                    $dailySupplies[$dateStr][$dId]['filling_amount'] += $itemAmount;
+
+                    if (! isset($productBreakdownTotals[$pId])) {
+                        $productBreakdownTotals[$pId] = [
+                            'product_id' => $pId,
+                            'name' => $prodName,
+                            'sku' => $prodSku,
+                            'unit' => $prodUnit,
+                            'total_quantity' => 0,
+                            'total_amount' => 0.0,
+                        ];
+                    }
+                    $productBreakdownTotals[$pId]['total_quantity'] += $qty;
+                    $productBreakdownTotals[$pId]['total_amount'] += $itemAmount;
                 }
             }
         }

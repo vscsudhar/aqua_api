@@ -80,6 +80,7 @@ class InvoiceController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
+            'invoice_no' => ['nullable', 'string', 'max:50'],
             'dealer_id' => ['nullable', 'exists:dealers,id'],
             'dealer_supply_id' => ['nullable', 'exists:dealer_supplies,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
@@ -145,6 +146,7 @@ class InvoiceController extends Controller
         $invoice = Invoice::findOrFail($id);
 
         $validated = $request->validate([
+            'invoice_no' => ['nullable', 'string', 'max:50'],
             'dealer_id' => ['nullable', 'exists:dealers,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
@@ -202,13 +204,16 @@ class InvoiceController extends Controller
     {
         $invoice = Invoice::findOrFail($id);
 
-        $request->validate([
-            'reason' => ['required', 'string', 'max:255'],
-        ]);
+        $reason = $request->input('reason') ?? $request->input('cancellation_reason');
+        if (empty($reason)) {
+            $request->validate([
+                'reason' => ['required', 'string', 'max:255'],
+            ]);
+        }
 
         $cancelled = $this->billingService->cancelInvoice(
             $invoice,
-            $request->input('reason'),
+            $reason,
             $request->user()
         );
 
@@ -289,5 +294,103 @@ class InvoiceController extends Controller
         $pdf = $this->billingService->renderInvoicePdf($invoice);
 
         return $pdf->stream("Invoice-{$invoice->invoice_no}.pdf");
+    }
+
+    /**
+     * View full HTML invoice in browser.
+     */
+    public function showHtml(int $id)
+    {
+        $invoice = Invoice::findOrFail($id);
+
+        return $this->billingService->renderInvoiceHtml($invoice);
+    }
+
+    /**
+     * Get the next lowest available invoice number.
+     */
+    public function nextNumber(Request $request): JsonResponse
+    {
+        $companyId = $request->user()?->company_id ?? 1;
+        $prefix = $request->query('prefix');
+        $nextNumber = $this->billingService->getLowestAvailableInvoiceNumber($companyId, $prefix);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'next_invoice_no' => $nextNumber,
+            ],
+        ]);
+    }
+
+    /**
+     * Validate whether an invoice number is available.
+     */
+    public function validateNumber(Request $request): JsonResponse
+    {
+        $request->validate([
+            'invoice_no' => ['required', 'string', 'max:50'],
+            'exclude_id' => ['nullable', 'integer'],
+        ]);
+
+        $companyId = $request->user()?->company_id ?? 1;
+        $invoiceNo = trim($request->input('invoice_no'));
+        $excludeId = $request->input('exclude_id') ? (int) $request->input('exclude_id') : null;
+
+        $isAvailable = $this->billingService->isInvoiceNumberAvailable($companyId, $invoiceNo, $excludeId);
+        $suggested = $isAvailable ? null : $this->billingService->getLowestAvailableInvoiceNumber($companyId);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'is_available' => $isAvailable,
+                'available' => $isAvailable,
+                'invoice_no' => $invoiceNo,
+                'suggested_invoice_no' => $suggested,
+                'message' => $isAvailable ? 'Invoice number is available.' : "Invoice number '{$invoiceNo}' is already in use.",
+            ],
+        ]);
+    }
+
+    /**
+     * Update an invoice number with audit tracking.
+     */
+    public function updateNumber(Request $request, int $id): JsonResponse
+    {
+        $invoice = Invoice::findOrFail($id);
+
+        $request->validate([
+            'invoice_no' => ['required', 'string', 'max:50'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $updated = $this->billingService->updateInvoiceNumber(
+            $invoice,
+            $request->input('invoice_no'),
+            $request->input('reason'),
+            $request->user()
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Invoice number updated successfully.',
+            'data' => new InvoiceResource($updated->load(['dealer', 'items', 'creator'])),
+        ]);
+    }
+
+    /**
+     * Permanently delete an invoice to release its number.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $invoice = Invoice::findOrFail($id);
+
+        $invoiceNo = $invoice->invoice_no;
+        $this->billingService->deleteInvoice($invoice, $request->user());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Invoice '{$invoiceNo}' deleted successfully. The number is now released and reusable.",
+        ]);
     }
 }

@@ -115,6 +115,11 @@ class Invoice extends Model
         return $this->hasMany(CreditNote::class, 'invoice_id');
     }
 
+    public function numberAuditLogs(): HasMany
+    {
+        return $this->hasMany(InvoiceNumberAuditLog::class, 'invoice_id')->latest();
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

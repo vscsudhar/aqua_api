@@ -8,6 +8,7 @@ use App\Models\Dealer;
 use App\Models\DealerLedgerEntry;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\InvoiceNumberAuditLog;
 use App\Models\InvoicePayment;
 use App\Models\Product;
 use App\Models\User;
@@ -118,19 +119,18 @@ class BillingService
                 }
             }
 
-            // Generate unique Invoice No
-            $dateSlug = Carbon::parse($invoiceDate)->format('Ymd');
-            $prefix = $settings->invoice_prefix ?? 'INV';
-            $padding = $settings->invoice_number_padding ?? 4;
-            $invQuery = Invoice::withoutGlobalScopes()->withTrashed();
-            if ($companyId) {
-                $invQuery->where('company_id', $companyId);
+            // Determine or validate unique Invoice No (reusing deleted numbers / manual editing)
+            if (! empty($data['invoice_no'])) {
+                $invoiceNo = trim($data['invoice_no']);
+                if (! $this->isInvoiceNumberAvailable($companyId, $invoiceNo)) {
+                    $nextAvailable = $this->getLowestAvailableInvoiceNumber($companyId);
+                    throw ValidationException::withMessages([
+                        'invoice_no' => ["The invoice number '{$invoiceNo}' is already in use. Next available number is '{$nextAvailable}'."],
+                    ]);
+                }
+            } else {
+                $invoiceNo = $this->getLowestAvailableInvoiceNumber($companyId);
             }
-            $count = (clone $invQuery)->whereDate('invoice_date', $invoiceDate)->count() + 1;
-            do {
-                $invoiceNo = sprintf("%s-%s-%0{$padding}d", $prefix, $dateSlug, $count);
-                $count++;
-            } while ((clone $invQuery)->where('invoice_no', $invoiceNo)->exists());
 
             $isFinal = filter_var($data['is_final'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $status = (! empty($data['status']) && in_array($data['status'], ['draft', 'finalized']))
@@ -242,6 +242,34 @@ class BillingService
             }
 
             $invoice->invoice_date = $invoiceDate;
+            if (! empty($data['invoice_no']) && trim($data['invoice_no']) !== $invoice->invoice_no) {
+                $newInvoiceNo = trim($data['invoice_no']);
+                $companyId = $invoice->company_id;
+                if (! $this->isInvoiceNumberAvailable($companyId, $newInvoiceNo, $invoice->id)) {
+                    $nextAvailable = $this->getLowestAvailableInvoiceNumber($companyId);
+                    throw ValidationException::withMessages([
+                        'invoice_no' => ["The invoice number '{$newInvoiceNo}' is already in use. Next available number is '{$nextAvailable}'."],
+                    ]);
+                }
+
+                $oldInvoiceNo = $invoice->invoice_no;
+
+                InvoiceNumberAuditLog::create([
+                    'company_id' => $companyId,
+                    'invoice_id' => $invoice->id,
+                    'old_invoice_no' => $oldInvoiceNo,
+                    'new_invoice_no' => $newInvoiceNo,
+                    'reason' => $data['reason'] ?? 'Manual edit in invoice editor',
+                    'changed_by' => $user?->id,
+                ]);
+
+                $invoice->invoice_no = $newInvoiceNo;
+
+                DealerLedgerEntry::where('company_id', $companyId)
+                    ->where('reference_id', $invoice->id)
+                    ->where('reference_no', $oldInvoiceNo)
+                    ->update(['reference_no' => $newInvoiceNo]);
+            }
             if (isset($data['due_date'])) {
                 $invoice->due_date = ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : null;
             }
@@ -631,11 +659,19 @@ class BillingService
      */
     public function renderInvoicePdf(Invoice $invoice)
     {
-        $settings = CompanySetting::getSettings($invoice->company_id);
-        $invoice->load(['dealer', 'supply', 'items.product', 'payments']);
+        $invoice->load(['company', 'dealer', 'supply', 'items.product', 'payments']);
+        $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
+        $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
+            ?? CompanySetting::getSettings($companyId);
+        $company = $invoice->company ?: \App\Models\Company::find($companyId);
 
         $logoBase64 = null;
-        $logoPath = $settings->logo_path ?: $invoice->company?->logo_path;
+        $logoPath = $settings->logo_path ?: $company?->logo_path;
+        if (! $logoPath && $companyId != 1) {
+            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+            $logoPath = $defaultSettings?->logo_path;
+        }
+
         if ($logoPath && Storage::disk('public')->exists($logoPath)) {
             $absPath = Storage::disk('public')->path($logoPath);
             $mime = @mime_content_type($absPath) ?: 'image/png';
@@ -647,9 +683,49 @@ class BillingService
             'settings' => $settings,
             'logoBase64' => $logoBase64,
             'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
-        ])->setPaper('a4', 'portrait');
+            'isHtmlView' => false,
+        ])->setPaper('a4', 'portrait')
+          ->setOption([
+              'defaultMediaType' => 'print',
+              'isRemoteEnabled' => true,
+              'isHtml5ParserEnabled' => true,
+              'defaultFont' => 'DejaVu Sans',
+          ]);
 
         return $pdf;
+    }
+
+    /**
+     * Render professional HTML invoice view.
+     */
+    public function renderInvoiceHtml(Invoice $invoice)
+    {
+        $invoice->load(['company', 'dealer', 'supply', 'items.product', 'payments']);
+        $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
+        $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
+            ?? CompanySetting::getSettings($companyId);
+        $company = $invoice->company ?: \App\Models\Company::find($companyId);
+
+        $logoBase64 = null;
+        $logoPath = $settings->logo_path ?: $company?->logo_path;
+        if (! $logoPath && $companyId != 1) {
+            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+            $logoPath = $defaultSettings?->logo_path;
+        }
+
+        if ($logoPath && Storage::disk('public')->exists($logoPath)) {
+            $absPath = Storage::disk('public')->path($logoPath);
+            $mime = @mime_content_type($absPath) ?: 'image/png';
+            $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+        }
+
+        return view('invoices.pdf', [
+            'invoice' => $invoice,
+            'settings' => $settings,
+            'logoBase64' => $logoBase64,
+            'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
+            'isHtmlView' => true,
+        ]);
     }
 
     /**
@@ -692,5 +768,228 @@ class BillingService
         $paise = ($decimal > 0) ? ' and '.($words[$decimal / 10] ?? '').' '.($words[$decimal % 10] ?? '').' Paise' : '';
 
         return ($Rupees ? 'Rupees '.trim($Rupees) : 'Zero Rupees').$paise.' Only';
+    }
+
+    /**
+     * Identify the lowest available positive invoice number for the company (reusing deleted numbers).
+     */
+    public function getLowestAvailableInvoiceNumber(int $companyId, ?string $prefix = null): string
+    {
+        $settings = CompanySetting::where('company_id', $companyId)->first() ?? CompanySetting::first();
+        // Prefix is optional! If prefix is null or empty, sequence numbers alone are generated.
+        $rawPrefix = $prefix !== null ? $prefix : ($settings?->invoice_prefix ?? '');
+        $hasPrefix = ! empty(trim($rawPrefix));
+        $cleanPrefix = $hasPrefix ? rtrim(trim($rawPrefix), '-') : '';
+        $defaultPadding = (int) ($settings?->invoice_number_padding ?? 0);
+        $startNum = (int) ($settings?->next_invoice_number ?: 1);
+
+        // Fetch existing invoice numbers for the company (ignoring permanently deleted invoices)
+        $existingInvoices = Invoice::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->pluck('invoice_no')
+            ->toArray();
+
+        if (empty($existingInvoices)) {
+            if ($hasPrefix) {
+                return $defaultPadding > 1
+                    ? sprintf("%s-%0{$defaultPadding}d", $cleanPrefix, $startNum)
+                    : sprintf("%s-%d", $cleanPrefix, $startNum);
+            }
+            return $defaultPadding > 1
+                ? sprintf("%0{$defaultPadding}d", $startNum)
+                : (string) $startNum;
+        }
+
+        // Group invoice numbers by prefix
+        $groups = [];
+        foreach ($existingInvoices as $no) {
+            if (preg_match('/^(.*?)(\d+)$/', trim($no), $m)) {
+                $p = $m[1];
+                $num = (int) $m[2];
+                $padLen = strlen($m[2]);
+                $groups[$p]['numbers'][] = $num;
+                $groups[$p]['pad_lens'][] = $padLen;
+            }
+        }
+
+        if (empty($groups)) {
+            if ($hasPrefix) {
+                return $cleanPrefix . '-1';
+            }
+            return '1';
+        }
+
+        // Target prefix: match requested prefix (or empty string if no prefix)
+        $targetPrefix = null;
+        if (! $hasPrefix) {
+            // User requested no prefix: check if empty prefix group exists
+            if (isset($groups[''])) {
+                $targetPrefix = '';
+            }
+        } else {
+            foreach (array_keys($groups) as $p) {
+                if (stripos(rtrim($p, '-'), $cleanPrefix) !== false) {
+                    $targetPrefix = $p;
+                    break;
+                }
+            }
+        }
+
+        // If no matching group exists, start with startNum
+        if ($targetPrefix === null) {
+            if ($hasPrefix) {
+                $targetPrefix = $cleanPrefix . '-';
+                $candidate = $startNum;
+                $padLen = $defaultPadding;
+                $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+                    ? $targetPrefix . sprintf("%0{$padLen}d", $candidate)
+                    : $targetPrefix . $candidate;
+
+                while (! $this->isInvoiceNumberAvailable($companyId, $candidateNo)) {
+                    $candidate++;
+                    $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+                        ? $targetPrefix . sprintf("%0{$padLen}d", $candidate)
+                        : $targetPrefix . $candidate;
+                }
+                return $candidateNo;
+            } else {
+                $candidate = $startNum;
+                $padLen = $defaultPadding;
+                $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+                    ? sprintf("%0{$padLen}d", $candidate)
+                    : (string) $candidate;
+
+                while (! $this->isInvoiceNumberAvailable($companyId, $candidateNo)) {
+                    $candidate++;
+                    $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+                        ? sprintf("%0{$padLen}d", $candidate)
+                        : (string) $candidate;
+                }
+                return $candidateNo;
+            }
+        }
+
+        $numbers = array_unique($groups[$targetPrefix]['numbers']);
+        sort($numbers);
+
+        $padLen = max($groups[$targetPrefix]['pad_lens']);
+
+        $numSet = array_flip($numbers);
+        $min = reset($numbers);
+        $max = end($numbers);
+
+        // Find lowest available number: check for gaps starting from min
+        $candidate = null;
+        for ($i = $min; $i <= $max; $i++) {
+            if (! isset($numSet[$i])) {
+                $candidate = $i;
+                break;
+            }
+        }
+
+        // If no gaps between min and max, next is max + 1
+        if ($candidate === null) {
+            $candidate = $max + 1;
+        }
+
+        $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+            ? $targetPrefix . sprintf("%0{$padLen}d", $candidate)
+            : $targetPrefix . $candidate;
+
+        // Concurrency safeguard: ensure candidate is not currently taken
+        while (! $this->isInvoiceNumberAvailable($companyId, $candidateNo)) {
+            $candidate++;
+            $candidateNo = ($padLen > 1 && $padLen > strlen((string) $candidate))
+                ? $targetPrefix . sprintf("%0{$padLen}d", $candidate)
+                : $targetPrefix . $candidate;
+        }
+
+        return $candidateNo;
+    }
+
+    /**
+     * Check if an invoice number is available for use within the company.
+     */
+    public function isInvoiceNumberAvailable(int $companyId, string $invoiceNo, ?int $excludeInvoiceId = null): bool
+    {
+        $query = Invoice::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->where('invoice_no', trim($invoiceNo))
+            ->whereNull('deleted_at');
+
+        if ($excludeInvoiceId) {
+            $query->where('id', '!=', $excludeInvoiceId);
+        }
+
+        return ! $query->exists();
+    }
+
+    /**
+     * Dedicated method to change an existing invoice number with audit trail and reference synchronization.
+     */
+    public function updateInvoiceNumber(Invoice $invoice, string $newInvoiceNo, ?string $reason = null, ?User $user = null): Invoice
+    {
+        $newInvoiceNo = trim($newInvoiceNo);
+        if ($newInvoiceNo === $invoice->invoice_no) {
+            return $invoice;
+        }
+
+        $companyId = $invoice->company_id;
+        if (! $this->isInvoiceNumberAvailable($companyId, $newInvoiceNo, $invoice->id)) {
+            $nextAvailable = $this->getLowestAvailableInvoiceNumber($companyId);
+            throw ValidationException::withMessages([
+                'invoice_no' => ["The invoice number '{$newInvoiceNo}' is already in use. Next available number is '{$nextAvailable}'."],
+            ]);
+        }
+
+        return DB::transaction(function () use ($invoice, $newInvoiceNo, $reason, $user, $companyId) {
+            $oldInvoiceNo = $invoice->invoice_no;
+
+            // Audit record
+            InvoiceNumberAuditLog::create([
+                'company_id' => $companyId,
+                'invoice_id' => $invoice->id,
+                'old_invoice_no' => $oldInvoiceNo,
+                'new_invoice_no' => $newInvoiceNo,
+                'reason' => $reason ?? 'Manual edit in invoice manager',
+                'changed_by' => $user?->id,
+            ]);
+
+            $invoice->invoice_no = $newInvoiceNo;
+            $invoice->updated_by = $user?->id;
+            $invoice->save();
+
+            // Update dealer ledger references if any
+            DealerLedgerEntry::where('company_id', $companyId)
+                ->where('reference_id', $invoice->id)
+                ->where('reference_no', $oldInvoiceNo)
+                ->update(['reference_no' => $newInvoiceNo]);
+
+            return $invoice;
+        });
+    }
+
+    /**
+     * Delete an invoice permanently, immediately releasing its invoice number for reuse.
+     */
+    public function deleteInvoice(Invoice $invoice, ?User $user = null): bool
+    {
+        return DB::transaction(function () use ($invoice) {
+            // Delete invoice line items
+            $invoice->items()->forceDelete();
+
+            // Delete associated payments and credit notes if any
+            $invoice->payments()->forceDelete();
+            $invoice->creditNotes()->forceDelete();
+
+            // Remove dealer ledger entries
+            DealerLedgerEntry::where('company_id', $invoice->company_id)
+                ->where('reference_id', $invoice->id)
+                ->delete();
+
+            // Permanently delete invoice to release invoice number
+            return (bool) $invoice->forceDelete();
+        });
     }
 }

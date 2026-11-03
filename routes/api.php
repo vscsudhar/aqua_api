@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BottleLedgerController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanySettingController;
 use App\Http\Controllers\Api\CompanyUserController;
@@ -65,12 +66,14 @@ Route::prefix('v1')->group(function () {
     // Public Authentication & Assets
     // ==========================================
     Route::prefix('auth')->group(function () {
-        Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:120,1');
+        Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:120,1')->name('login');
     });
 
     // Public Company Logo Endpoints (CORS-enabled for Web Image rendering)
     Route::get('/public/company-logo/{companyId}', [CompanySettingController::class, 'streamPublicLogo']);
     Route::get('/public/logo-file/{filename}', [CompanySettingController::class, 'streamLogoFile']);
+    Route::get('/public/invoices/{id}/html', [InvoiceController::class, 'showHtml']);
+    Route::get('/public/invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
 
     // ==========================================
     // Authenticated Tenant Business Routes
@@ -110,12 +113,16 @@ Route::prefix('v1')->group(function () {
 
         // Billing & Invoices
         Route::prefix('invoices')->group(function () {
+            Route::get('/next-number', [InvoiceController::class, 'nextNumber']);
+            Route::post('/validate-number', [InvoiceController::class, 'validateNumber']);
+            Route::patch('/{id}/number', [InvoiceController::class, 'updateNumber']);
             Route::post('/{id}/finalize', [InvoiceController::class, 'finalize']);
             Route::post('/{id}/cancel', [InvoiceController::class, 'cancel']);
             Route::post('/{id}/credit-note', [InvoiceController::class, 'creditNote']);
             Route::post('/{id}/payments', [InvoiceController::class, 'recordPayment']);
             Route::get('/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
             Route::get('/{id}/print', [InvoiceController::class, 'printPdf']);
+            Route::get('/{id}/html', [InvoiceController::class, 'showHtml']);
         });
         Route::apiResource('invoices', InvoiceController::class);
 
@@ -172,6 +179,13 @@ Route::prefix('v1')->group(function () {
             Route::get('/export-pdf', [DealerLedgerReportController::class, 'exportPdf']);
             Route::get('/export-excel', [DealerLedgerReportController::class, 'exportExcel']);
             Route::get('/export-csv', [DealerLedgerReportController::class, 'exportCsv']);
+        });
+
+        // Reports: Bottle Ledger Module (Monthly Bottle Purchase & Stock Register)
+        Route::prefix('bottle-ledger')->group(function () {
+            Route::get('/', [BottleLedgerController::class, 'index']);
+            Route::get('/drilldown', [BottleLedgerController::class, 'drilldown']);
+            Route::get('/pdf', [BottleLedgerController::class, 'exportPdf']);
         });
 
         Route::get('/ping', function () {
