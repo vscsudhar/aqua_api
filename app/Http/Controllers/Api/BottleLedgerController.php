@@ -47,7 +47,7 @@ class BottleLedgerController extends Controller
         $request->validate([
             'date' => ['required', 'date'],
             'product_key' => ['required', 'string'],
-            'source' => ['required', 'string', 'in:dealer,supplier'],
+            'source' => ['required', 'string', 'in:dealer,supplier,damage'],
         ]);
 
         $date = Carbon::parse($request->input('date'))->toDateString();

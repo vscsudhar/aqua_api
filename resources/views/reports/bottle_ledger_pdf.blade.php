@@ -372,6 +372,15 @@
                     @endforeach
                     <td class="num" style="font-weight: bold;">{{ number_format($sumOut, 0) }}</td>
                 </tr>
+                <tr>
+                    <td style="text-align: left; font-weight: bold; background-color: #fee2e2; color: #991b1b;">(&minus;) Damaged Bottles Outward (Qty)</td>
+                    @php $sumDmg = 0; @endphp
+                    @foreach($stock_register as $sr)
+                        @php $sumDmg += ($sr['damaged_outward_qty'] ?? 0); @endphp
+                        <td class="num" style="color: #991b1b;">{{ number_format($sr['damaged_outward_qty'] ?? 0, 0) }}</td>
+                    @endforeach
+                    <td class="num" style="font-weight: bold; color: #991b1b;">{{ number_format($sumDmg, 0) }}</td>
+                </tr>
                 <tr style="background-color: #e2e8f0; font-weight: bold; border-top: 1.5pt solid #0f172a;">
                     <td style="text-align: left; font-weight: bold;">(=) Closing Stock (Qty)</td>
                     @php $sumCl = 0; @endphp

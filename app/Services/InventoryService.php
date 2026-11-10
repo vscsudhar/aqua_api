@@ -570,7 +570,7 @@ class InventoryService
         $totalReceived = (float) InventoryMovement::whereIn('movement_type', ['purchase_in', 'addition'])
             ->sum('quantity');
 
-        $totalIssued = (float) InventoryMovement::whereIn('movement_type', ['supply_out', 'reduction', 'damage', 'leakage', 'expiry', 'loss'])
+        $totalIssued = (float) InventoryMovement::whereIn('movement_type', ['supply_out', 'reduction', 'damage', 'damage_out', 'leakage', 'expiry', 'loss'])
             ->sum('quantity');
 
         return [

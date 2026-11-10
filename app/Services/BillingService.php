@@ -605,6 +605,7 @@ class BillingService
         $invoice->sgst_amount = $sgstTotal;
         $invoice->igst_amount = $igstTotal;
         $invoice->tax_total = $taxTotal;
+        $invoice->raw_grand_total = $rawGrand;
         $invoice->round_off = $roundOff;
         $invoice->grand_total = $roundedGrand;
         $invoice->balance_due = $roundedGrand;

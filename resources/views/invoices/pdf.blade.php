@@ -1,3 +1,13 @@
+@php
+    if (!function_exists('formatInvoiceAmount')) {
+        function formatInvoiceAmount($val) {
+            $num = (float) ($val ?? 0);
+            return round($num, 2) == round($num, 0)
+                ? number_format($num, 0)
+                : number_format($num, 2);
+        }
+    }
+@endphp
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,7 +32,7 @@
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
             font-size: 11px;
-            color: #1e293b;
+            color: #0f172a;
             line-height: 1.35;
             background-color: #f1f5f9;
             padding: 16px 8px 36px 8px;
@@ -43,7 +53,7 @@
             padding: 12px 16px;
             border-radius: 8px;
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-            border: 1px solid #e2e8f0;
+            border: 1px solid #cbd5e1;
             box-sizing: border-box;
             flex-wrap: wrap;
             gap: 10px;
@@ -58,17 +68,6 @@
             font-weight: 700;
             color: #0f172a;
         }
-        .status-badge {
-            font-size: 11px;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 4px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .status-finalized { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
-        .status-draft { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-        .status-cancelled { background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; }
         .toolbar-actions {
             display: flex;
             align-items: center;
@@ -98,86 +97,36 @@
         .page-container {
             width: 100%;
             max-width: 820px;
-            min-height: 297mm;
             margin: 0 auto;
             background: #ffffff;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-            border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            padding: 28px 24px;
+            border: 1.5px solid #1e293b;
             box-sizing: border-box;
             position: relative;
-            overflow-x: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
         }
         .table-responsive-wrapper {
             width: 100%;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            margin-bottom: 12px;
         }
 
         @media (max-width: 640px) {
             body { padding: 8px 4px 24px 4px; }
-            .page-container { padding: 14px 10px; border-radius: 4px; min-height: auto; }
             .screen-toolbar { padding: 10px; flex-direction: column; align-items: stretch; gap: 8px; }
             .toolbar-actions { display: flex; flex-wrap: wrap; gap: 6px; }
             .btn { flex: 1 1 auto; justify-content: center; }
-            .header-table td.header-left, .header-table td.header-right { display: block !important; width: 100% !important; text-align: left !important; }
-            .header-table td.header-right { margin-top: 12px; }
-            .invoice-title { text-align: left !important; font-size: 18px !important; }
-            .sub-header-title { text-align: left !important; }
-            .meta-table { margin-top: 6px !important; }
-            .meta-table td { display: table-cell !important; }
-            .box-table td.box-col { display: block !important; width: 100% !important; border-right: none !important; border-bottom: 1px solid #cbd5e1 !important; }
-            .box-table td.box-col:last-child { border-bottom: none !important; }
-            .summary-table td.summary-col { display: block !important; width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; }
-            .summary-table td.summary-col:last-child { margin-top: 14px; }
         }
 
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 10mm 10mm 10mm 10mm;
+                margin: 8mm 8mm 8mm 8mm;
             }
             body { background: #ffffff !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
             .no-print { display: none !important; }
-            .page-container { width: 100% !important; min-height: 277mm !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: none !important; }
+            .page-container { width: 100% !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 1.5px solid #1e293b !important; }
             .table-responsive-wrapper { overflow: visible !important; }
         }
-
-        table { width: 100%; border-collapse: collapse; }
-        .header-table td { vertical-align: top; }
-        .invoice-title { font-size: 20px; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; text-align: right; margin: 0; }
-        .sub-header-title { font-size: 8.5px; color: #64748b; text-align: right; margin-top: 2px; }
-        .company-name { font-size: 16px; font-weight: bold; color: #0284c7; }
-        .company-sub { font-size: 9.5px; color: #475569; margin-top: 2px; }
-        .divider { border-top: 1.5px solid #0284c7; margin: 8px 0; }
-        .box-table { border: 1px solid #94a3b8; border-collapse: collapse; margin-bottom: 8px; table-layout: fixed; }
-        .box-table td { padding: 6px 8px; vertical-align: top; border-right: 1px solid #94a3b8; }
-        .box-table td:last-child { border-right: none; }
-        .box-title { font-size: 9px; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 4px; }
-
-        .items-table { border: 1px solid #94a3b8; margin-bottom: 8px; table-layout: fixed; border-collapse: collapse; }
-        .items-table th { background-color: #f1f5f9; color: #0f172a; font-size: 9px; font-weight: bold; text-transform: uppercase; padding: 6px 4px; border-bottom: 1.5px solid #94a3b8; border-right: 1px solid #94a3b8; text-align: left; }
-        .items-table th:last-child { border-right: none; }
-        .items-table th.text-right, .items-table td.text-right { text-align: right; }
-        .items-table th.text-center, .items-table td.text-center { text-align: center; }
-        .items-table td { padding: 5px 4px; border-bottom: 1px solid #cbd5e1; border-right: 1px solid #94a3b8; font-size: 9.5px; word-wrap: break-word; }
-        .items-table td:last-child { border-right: none; }
-        .items-table tr.empty-row td { height: 20px; padding: 0 4px; border-bottom: 1px solid #f1f5f9; border-right: 1px solid #94a3b8; }
-        .items-table tr.empty-row td:last-child { border-right: none; }
-        .items-table tr:last-child td { border-bottom: 1px solid #94a3b8; }
-
-        .totals-table td { padding: 3px 2px; font-size: 9.5px; }
-        .totals-table .grand-row td { border-top: 1.5px solid #0284c7; border-bottom: 1.5px solid #0284c7; font-size: 11.5px; font-weight: bold; color: #0284c7; padding: 5px 2px; }
-        .amount-in-words { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 6px 8px; font-size: 10px; font-weight: bold; margin-bottom: 10px; }
-        .bank-details { font-size: 9px; color: #334155; }
-        .footer-terms { font-size: 8.5px; color: #64748b; }
-        .signature-box { text-align: right; padding-top: 26px; font-size: 9px; }
-        .cancelled-watermark { position: fixed; top: 35%; left: 20%; font-size: 65px; color: rgba(239, 68, 68, 0.18); font-weight: bold; transform: rotate(-30deg); z-index: 1000; }
 
         @else
         /* ========================================================
@@ -185,13 +134,13 @@
            ======================================================== */
         @page {
             size: A4 portrait;
-            margin: 10mm 10mm 10mm 10mm;
+            margin: 8mm 8mm 8mm 8mm;
         }
         body {
             font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif;
             font-size: 8pt;
-            color: #1e293b;
-            line-height: 1.35;
+            color: #0f172a;
+            line-height: 1.3;
             background: #ffffff;
             margin: 0;
             padding: 0;
@@ -200,151 +149,18 @@
             margin: 0;
             padding: 0;
             background: #ffffff;
+            border: 1pt solid #1e293b;
+            box-sizing: border-box;
         }
+        @endif
+
+        /* Shared Global Rules */
         table {
             width: 100%;
             border-collapse: collapse;
         }
-        .header-table td {
-            vertical-align: top;
-        }
-        .invoice-title {
-            font-size: 16pt;
-            font-weight: bold;
-            color: #0f172a;
-            text-transform: uppercase;
-            text-align: right;
-            margin: 0;
-            padding: 0;
-        }
-        .sub-header-title {
-            font-size: 7.5pt;
-            color: #64748b;
-            text-align: right;
-            margin-top: 2pt;
-        }
-        .company-name {
-            font-size: 13pt;
-            font-weight: bold;
-            color: #0284c7;
-            line-height: 1.2;
-        }
-        .company-sub {
-            font-size: 7.5pt;
-            color: #475569;
-            margin-top: 1pt;
-        }
-        .divider {
-            border-top: 1.5pt solid #0284c7;
-            margin: 6pt 0;
-        }
-        .box-table {
-            border: 0.75pt solid #94a3b8;
-            border-collapse: collapse;
-            margin-bottom: 6pt;
-            table-layout: fixed;
-        }
-        .box-table td {
-            padding: 4pt 6pt;
-            vertical-align: top;
-            border-right: 0.75pt solid #94a3b8;
-        }
-        .box-table td:last-child {
-            border-right: none;
-        }
-        .box-title {
-            font-size: 7.5pt;
-            font-weight: bold;
-            color: #0284c7;
-            text-transform: uppercase;
-            margin-bottom: 2pt;
-        }
-        .items-table {
-            border: 0.75pt solid #94a3b8;
-            margin-bottom: 8pt;
-            table-layout: fixed;
-            border-collapse: collapse;
-        }
-        .items-table th {
-            background-color: #f1f5f9;
-            color: #0f172a;
-            font-size: 7.5pt;
-            font-weight: bold;
-            text-transform: uppercase;
-            padding: 4.5pt 3pt;
-            border-bottom: 1pt solid #94a3b8;
-            border-right: 0.75pt solid #94a3b8;
-            text-align: left;
-        }
-        .items-table th:last-child {
-            border-right: none;
-        }
-        .items-table th.text-right, .items-table td.text-right {
-            text-align: right;
-        }
-        .items-table th.text-center, .items-table td.text-center {
-            text-align: center;
-        }
-        .items-table td {
-            padding: 4.5pt 3pt;
-            border-bottom: 0.5pt solid #cbd5e1;
-            border-right: 0.75pt solid #94a3b8;
-            font-size: 7.8pt;
-            word-wrap: break-word;
-        }
-        .items-table td:last-child {
-            border-right: none;
-        }
-        .items-table tr.empty-row td {
-            height: 18pt;
-            padding: 0 3pt;
-            border-bottom: 0.5pt solid #f1f5f9;
-            border-right: 0.75pt solid #94a3b8;
-        }
-        .items-table tr.empty-row td:last-child {
-            border-right: none;
-        }
-        .items-table tr:last-child td {
-            border-bottom: 1pt solid #94a3b8;
-        }
-        .summary-table td {
-            vertical-align: top;
-        }
-        .totals-table td {
-            padding: 2.5pt 2pt;
-            font-size: 7.8pt;
-        }
-        .totals-table .grand-row td {
-            border-top: 1.5pt solid #0284c7;
-            border-bottom: 1.5pt solid #0284c7;
-            font-size: 9.5pt;
-            font-weight: bold;
-            color: #0284c7;
-            padding: 4pt 2pt;
-        }
-        .amount-in-words {
-            background-color: #f8fafc;
-            border: 0.75pt solid #e2e8f0;
-            padding: 5pt 6pt;
-            font-size: 7.5pt;
-            font-weight: bold;
-            margin-bottom: 6pt;
-            line-height: 1.35;
-        }
-        .bank-details {
-            font-size: 7pt;
-            color: #334155;
-            line-height: 1.35;
-        }
-        .footer-terms {
-            font-size: 7pt;
-            color: #64748b;
-            line-height: 1.3;
-        }
-        .signature-box {
-            text-align: right;
-            padding-top: 26pt;
-            font-size: 7.5pt;
+        td, th {
+            box-sizing: border-box;
         }
         .cancelled-watermark {
             position: fixed;
@@ -356,7 +172,6 @@
             transform: rotate(-30deg);
             z-index: 1000;
         }
-        @endif
     </style>
 </head>
 <body>
@@ -389,278 +204,317 @@
             <div class="cancelled-watermark" style="color: rgba(148, 163, 184, 0.22); left: 30%;">DRAFT</div>
         @endif
 
-    <!-- Top Header -->
-    <table class="header-table" style="width: 100%; table-layout: fixed; margin-bottom: 2pt;">
-        <tr>
-            <!-- Left Corner: Company Logo -->
-            <td style="width: 18%; vertical-align: middle; text-align: left;">
-                @if(!empty($logoBase64))
-                    <img src="{{ $logoBase64 }}" style="max-height: 50px; max-width: 105px; object-fit: contain;" alt="Company Logo" />
-                @endif
-            </td>
-
-            <!-- Center of Page on Top: Company Name and Address -->
-            <td style="width: 68%; vertical-align: top; text-align: center; padding: 0 4px;">
-                <div class="company-name" style="font-size: 13pt; font-weight: bold; color: #0284c7; text-transform: uppercase; line-height: 1.15;">{{ $settings->company_name }}</div>
-                @if($settings->tagline)
-                    <div class="company-sub" style="font-size: 7.5pt; color: #475569; font-weight: 600; margin-top: 1px;">{{ $settings->tagline }}</div>
-                @endif
-                <div class="company-sub" style="font-size: 7pt; color: #334155; margin-top: 1px; line-height: 1.25;">{{ $settings->address }}</div>
-            </td>
-
-            <!-- Right Corner: Original Marker -->
-            <td style="width: 14%; vertical-align: top; text-align: right;">
-                <div style="font-size: 7.5pt; color: #64748b; font-weight: bold;">(Original)</div>
-            </td>
-        </tr>
-    </table>
-
-    <!-- Centered TAX INVOICE (Tight spacing, no separate box) -->
-    <div style="text-align: center; font-size: 8.5pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; margin: 3pt 0 2pt 0; line-height: 1.2;">
-        TAX INVOICE
-    </div>
-
-    <!-- 2 Boxes Only: Left Customer Box | Right Contact & FSSAI Details Box (Fully closed and complete) -->
-    <table class="box-table" style="width: 100%; table-layout: fixed; border-collapse: collapse; border: 0.75pt solid #94a3b8; margin: 0 0 5pt 0;">
-        <tr>
-            <!-- Box 1 (Left): Customer Details -->
-            <td class="box-col" style="width: 52%; vertical-align: top; padding: 3pt 5pt; border-right: 0.75pt solid #94a3b8;">
-                <div style="font-size: 7.5pt; font-weight: bold; color: #0284c7; margin-bottom: 2pt;">TO : {{ strtoupper($invoice->customer_name) }}</div>
-                @if($invoice->customer_address)
-                    <div style="font-size: 7pt; color: #334155; line-height: 1.25; margin-bottom: 2pt;">{{ $invoice->customer_address }}</div>
-                @endif
-                @if($invoice->customer_phone)
-                    <div style="font-size: 7pt; line-height: 1.25;"><strong>Phone :</strong> {{ $invoice->customer_phone }}</div>
-                @endif
-                @if($invoice->customer_gstin)
-                    <div style="font-size: 7pt; line-height: 1.25; margin-top: 1pt;"><strong>GSTIN :</strong> {{ $invoice->customer_gstin }}</div>
-                @endif
-            </td>
-
-            <!-- Box 2 (Right): Company Contact Details with FSSAI & Invoice Info -->
-            <td class="box-col" style="width: 48%; vertical-align: top; padding: 3pt 5pt; border-right: none;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 7pt; line-height: 1.25;">
-                    <tr>
-                        <td style="width: 32%; padding: 0.5pt 0; font-weight: bold; color: #0f172a; border: none;">Invoice No</td>
-                        <td style="width: 68%; padding: 0.5pt 0; font-weight: bold; color: #0284c7; border: none;">: {{ $invoice->invoice_no }}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0f172a; border: none;">Invoice Date</td>
-                        <td style="padding: 0.5pt 0; border: none;">: {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') }}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0f172a; border: none;">Phone</td>
-                        <td style="padding: 0.5pt 0; border: none;">: {{ $settings->phone }}</td>
-                    </tr>
-                    @if($settings->email)
-                    <tr>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0f172a; border: none;">Email</td>
-                        <td style="padding: 0.5pt 0; border: none;">: {{ $settings->email }}</td>
-                    </tr>
-                    @endif
-                    @if(!empty($settings->fssai_no))
-                    <tr>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0284c7; border: none;">FSSAI NO</td>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0284c7; border: none;">: {{ $settings->fssai_no }}</td>
-                    </tr>
-                    @endif
-                    @if($settings->gstin)
-                    <tr>
-                        <td style="padding: 0.5pt 0; font-weight: bold; color: #0f172a; border: none;">GSTIN</td>
-                        <td style="padding: 0.5pt 0; border: none;">: {{ $settings->gstin }}</td>
-                    </tr>
-                    @endif
-                </table>
-            </td>
-        </tr>
-    </table>
-
-    <!-- Line Items Table -->
-    @if(!empty($isHtmlView))
-    <div class="table-responsive-wrapper">
-    @endif
-    <table class="items-table" style="width: 100%; table-layout: fixed;">
-        <thead>
+        <!-- TOP HEADER: Logo (Left), Company Name & Address (Center), Original (Right) -->
+        <table style="width: 100%; table-layout: fixed; padding: 6pt 8pt 3pt 8pt;">
             <tr>
-                @if($invoice->is_interstate)
-                    <th style="width: 5%;" class="text-center">#</th>
-                    <th style="width: 31%;">Description of Goods</th>
-                    <th style="width: 8%;" class="text-center">HSN</th>
-                    <th style="width: 7%;" class="text-right">Qty</th>
-                    <th style="width: 7%;" class="text-center">Unit</th>
-                    <th style="width: 9%;" class="text-right">Rate (₹)</th>
-                    <th style="width: 11%;" class="text-right">Taxable (₹)</th>
-                    <th style="width: 11%;" class="text-right">IGST (₹)</th>
-                    <th style="width: 11%;" class="text-right">Total (₹)</th>
-                @else
-                    <th style="width: 5%;" class="text-center">#</th>
-                    <th style="width: 31%;">Description of Goods</th>
-                    <th style="width: 8%;" class="text-center">HSN</th>
-                    <th style="width: 7%;" class="text-right">Qty</th>
-                    <th style="width: 7%;" class="text-center">Unit</th>
-                    <th style="width: 9%;" class="text-right">Rate (₹)</th>
-                    <th style="width: 11%;" class="text-right">Taxable (₹)</th>
-                    <th style="width: 6%;" class="text-right">CGST (₹)</th>
-                    <th style="width: 6%;" class="text-right">SGST (₹)</th>
-                    <th style="width: 10%;" class="text-right">Total (₹)</th>
-                @endif
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($invoice->items as $idx => $item)
-            <tr>
-                <td class="text-center">{{ $idx + 1 }}</td>
-                <td>
-                    <strong>{{ $item->item_description }}</strong>
-                    @if($item->notes)
-                        <div style="font-size: 7.5pt; color: #64748b;">{{ $item->notes }}</div>
+                <!-- Left Corner: Logo -->
+                <td style="width: 18%; vertical-align: middle; text-align: left;">
+                    @if(!empty($logoBase64))
+                        <img src="{{ $logoBase64 }}" style="max-height: 48px; max-width: 105px; object-fit: contain;" alt="Logo" />
                     @endif
                 </td>
-                <td class="text-center">{{ $item->hsn_sac }}</td>
-                <td class="text-right">{{ number_format($item->quantity, 0) }}</td>
-                <td class="text-center">{{ $item->unit }}</td>
-                <td class="text-right">{{ number_format($item->unit_price, 2) }}</td>
-                <td class="text-right">{{ number_format($item->taxable_amount, 2) }}</td>
-                @if($invoice->is_interstate)
-                    <td class="text-right">
-                        {{ number_format($item->igst_amount, 2) }}
-                        <div style="font-size: 7pt; color: #64748b;">{{ number_format($item->igst_rate, 0) }}%</div>
-                    </td>
-                @else
-                    <td class="text-right">
-                        {{ number_format($item->cgst_amount, 2) }}
-                        <div style="font-size: 7pt; color: #64748b;">{{ number_format($item->cgst_rate, 1) }}%</div>
-                    </td>
-                    <td class="text-right">
-                        {{ number_format($item->sgst_amount, 2) }}
-                        <div style="font-size: 7pt; color: #64748b;">{{ number_format($item->sgst_rate, 1) }}%</div>
-                    </td>
-                @endif
-                <td class="text-right" style="font-weight: bold;">{{ number_format($item->line_total, 2) }}</td>
+
+                <!-- Center: Company Name & Address -->
+                <td style="width: 68%; vertical-align: top; text-align: center; padding: 0 4pt;">
+                    <div style="font-size: 13pt; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15;">
+                        {{ $settings->company_name }}
+                    </div>
+                    @if($settings->address)
+                        <div style="font-size: 7.2pt; color: #334155; margin-top: 2pt; line-height: 1.25;">
+                            {{ $settings->address }}
+                        </div>
+                    @endif
+                </td>
+
+                <!-- Right Corner: Original Marker -->
+                <td style="width: 14%; vertical-align: top; text-align: right;">
+                    <div style="font-size: 7.5pt; color: #475569; font-weight: bold;">(Original)</div>
+                </td>
             </tr>
-            @endforeach
+        </table>
 
-            @php
-                $emptyRows = max(0, 11 - count($invoice->items));
-            @endphp
-            @for($i = 0; $i < $emptyRows; $i++)
-            <tr class="empty-row">
-                <td class="text-center">&nbsp;</td>
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
-                @if($invoice->is_interstate)
-                    <td>&nbsp;</td>
-                @else
-                    <td>&nbsp;</td>
-                    <td>&nbsp;</td>
-                @endif
-                <td>&nbsp;</td>
+        <!-- COMPANY CONTACT ROW: Left (Email, GSTIN) | Right (Phone, FSSAI NO) -->
+        <table style="width: 100%; table-layout: fixed; padding: 2pt 8pt 4pt 8pt; font-size: 7.2pt; color: #1e293b; line-height: 1.35;">
+            <tr>
+                <!-- Left: Email & GSTIN -->
+                <td style="width: 50%; vertical-align: bottom; text-align: left;">
+                    @if($settings->email)
+                        <div><strong>Email :</strong> {{ $settings->email }}</div>
+                    @endif
+                    @if($settings->gstin)
+                        <div style="margin-top: 1pt;"><strong>GSTIN :</strong> {{ $settings->gstin }}</div>
+                    @endif
+                </td>
+
+                <!-- Right: Phone & FSSAI NO -->
+                <td style="width: 50%; vertical-align: bottom; text-align: right;">
+                    @if($settings->phone)
+                        <div><strong>Phone :</strong> {{ $settings->phone }}</div>
+                    @endif
+                    @if(!empty($settings->fssai_no))
+                        <div style="margin-top: 1pt;"><strong>FSSAI NO :</strong> {{ $settings->fssai_no }}</div>
+                    @endif
+                </td>
             </tr>
-            @endfor
-        </tbody>
-    </table>
-    @if(!empty($isHtmlView))
-    </div>
-    @endif
+        </table>
 
-    <!-- Amount in Words & Totals Summary -->
-    <table class="summary-table" style="width: 100%; table-layout: fixed; margin-bottom: 8px;">
-        <tr>
-            <td class="summary-col" style="width: 54%; vertical-align: top; padding-right: 6px;">
-                <div class="amount-in-words">
-                    <span style="color: #64748b; font-size: 7pt; text-transform: uppercase;">Invoice Amount in Words:</span><br>
-                    {{ $amountInWords }}
-                </div>
+        <!-- TAX INVOICE STRIP -->
+        <div style="text-align: center; font-size: 8.5pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; padding: 3pt 0; border-top: 1pt solid #1e293b; border-bottom: 1pt solid #1e293b; background: #ffffff;">
+            TAX INVOICE
+        </div>
 
-                <!-- Bank & Payment Details -->
-                <div style="border: 1px solid #e2e8f0; border-radius: 4px; padding: 5px 7px; background-color: #fafafa;">
-                    <div style="font-size: 7.5pt; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 2px;">Bank Remittance / UPI Payment</div>
-                    <table class="bank-details" style="width: 100%; table-layout: fixed;">
+        <!-- 2-COLUMN BOX: Customer Details (Left) | Invoice Metadata (Right) -->
+        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
+            <tr>
+                <!-- Left Box: Customer Details -->
+                <td style="width: 54%; vertical-align: top; padding: 4pt 8pt; border-right: 1pt solid #1e293b; font-size: 7.2pt; color: #1e293b; line-height: 1.3;">
+                    <div style="font-weight: bold; color: #0f172a; font-size: 7.6pt; margin-bottom: 2pt;">
+                        TO : {{ strtoupper($invoice->customer_name) }}
+                    </div>
+                    @if($invoice->customer_address)
+                        <div style="margin-bottom: 2pt; color: #334155;">{{ $invoice->customer_address }}</div>
+                    @endif
+                    @if($invoice->place_of_supply)
+                        <div style="margin-bottom: 2pt; font-weight: 500;">{{ strtoupper($invoice->place_of_supply) }}</div>
+                    @endif
+                    @if($invoice->customer_phone)
+                        <div><strong>Phone :</strong> {{ $invoice->customer_phone }}</div>
+                    @endif
+                    @if($invoice->customer_gstin)
+                        <div style="margin-top: 1pt;"><strong>GSTIN :</strong> {{ $invoice->customer_gstin }}</div>
+                    @endif
+                </td>
+
+                <!-- Right Box: Invoice Metadata -->
+                <td style="width: 46%; vertical-align: top; padding: 4pt 8pt; font-size: 7.2pt; line-height: 1.35;">
+                    <table style="width: 100%; border-collapse: collapse;">
                         <tr>
-                            <td style="width: 25%;"><strong>Bank:</strong> {{ $settings->bank_name }}</td>
-                            <td style="width: 25%;"><strong>Branch:</strong> {{ $settings->bank_branch }}</td>
-                            <td style="width: 25%;"><strong>A/C No:</strong> <span style="font-weight: bold; color: #0f172a;">{{ $settings->account_number }}</span></td>
-                            <td style="width: 25%;"><strong>IFSC:</strong> <span style="font-weight: bold;">{{ $settings->ifsc_code }}</span></td>
+                            <td style="width: 38%; padding: 1pt 0; font-weight: bold; color: #0f172a;">Invoice No</td>
+                            <td style="width: 62%; padding: 1pt 0; font-weight: bold; color: #0f172a;">: {{ $invoice->invoice_no }}</td>
                         </tr>
                         <tr>
-                            <td colspan="4" style="padding-top: 2px;"><strong>UPI ID:</strong> <span style="color: #0284c7; font-weight: bold;">{{ $settings->upi_id }}</span></td>
+                            <td style="padding: 1pt 0; font-weight: bold; color: #0f172a;">Invoice Date</td>
+                            <td style="padding: 1pt 0;">: {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 1pt 0; font-weight: bold; color: #0f172a;">Invoice Time</td>
+                            <td style="padding: 1pt 0;">: {{ \Carbon\Carbon::parse($invoice->created_at)->format('g:i:s A') }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 1pt 0; font-weight: bold; color: #0f172a;">Payment Mode</td>
+                            <td style="padding: 1pt 0; text-transform: uppercase;">: {{ $invoice->payment_status === 'paid' ? 'CASH' : ($invoice->payment_mode ?? 'CASH') }}</td>
                         </tr>
                     </table>
-                </div>
-            </td>
+                </td>
+            </tr>
+        </table>
 
-            <!-- Financial Totals Block -->
-            <td class="summary-col" style="width: 46%; vertical-align: top; padding-left: 6px;">
-                <table class="totals-table" style="width: 100%; table-layout: fixed;">
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;">Subtotal (Base Value):</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; font-weight: 500; white-space: nowrap;">₹ {{ number_format($invoice->subtotal, 2) }}</td>
-                    </tr>
-                    @if($invoice->discount_total > 0)
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px; color: #16a34a;">Less: Discount:</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; color: #16a34a; white-space: nowrap;">- ₹ {{ number_format($invoice->discount_total, 2) }}</td>
-                    </tr>
-                    @endif
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;"><strong>Taxable Value:</strong></td>
-                        <td style="width: 45%; text-align: right; padding: 2px; font-weight: bold; white-space: nowrap;">₹ {{ number_format($invoice->taxable_amount, 2) }}</td>
-                    </tr>
-                    @if($invoice->is_interstate)
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;">Integrated GST (IGST):</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; white-space: nowrap;">₹ {{ number_format($invoice->igst_amount, 2) }}</td>
-                    </tr>
-                    @else
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;">Central GST (CGST):</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; white-space: nowrap;">₹ {{ number_format($invoice->cgst_amount, 2) }}</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;">State GST (SGST):</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; white-space: nowrap;">₹ {{ number_format($invoice->sgst_amount, 2) }}</td>
-                    </tr>
-                    @endif
-                    @if($invoice->round_off != 0)
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px;">Round Off:</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; white-space: nowrap;">{{ $invoice->round_off > 0 ? '+ ' : '' }}₹ {{ number_format($invoice->round_off, 2) }}</td>
-                    </tr>
-                    @endif
-                    <tr class="grand-row">
-                        <td style="width: 55%; text-align: left; padding: 3px 2px;">Grand Total:</td>
-                        <td style="width: 45%; text-align: right; padding: 3px 2px; white-space: nowrap;">₹ {{ number_format($invoice->grand_total, 2) }}</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px; color: #16a34a;">Amount Received / Paid:</td>
-                        <td style="width: 45%; text-align: right; padding: 2px; color: #16a34a; font-weight: 600; white-space: nowrap;">₹ {{ number_format($invoice->paid_amount, 2) }}</td>
-                    </tr>
-                    <tr>
-                        <td style="width: 55%; text-align: left; padding: 2px; color: #b91c1c;"><strong>Balance Due:</strong></td>
-                        <td style="width: 45%; text-align: right; padding: 2px; color: #b91c1c; font-weight: bold; font-size: 8.5pt; white-space: nowrap;">₹ {{ number_format($invoice->balance_due, 2) }}</td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+        <!-- LINE ITEMS TABLE -->
+        @if(!empty($isHtmlView))
+        <div class="table-responsive-wrapper">
+        @endif
+        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
+            <thead>
+                <tr style="border-bottom: 1pt solid #1e293b; background: #ffffff;">
+                    <th style="width: 5%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
+                    <th style="width: 31%; padding: 4pt 4pt; font-size: 7pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Prod Name</th>
+                    <th style="width: 10%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
+                    <th style="width: 7%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
+                    <th style="width: 7%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
+                    <th style="width: 9%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
+                    <th style="width: 11%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
+                    <th style="width: 9%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Tax Amount</th>
+                    <th style="width: 11%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right;">Total Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($invoice->items as $idx => $item)
+                @php
+                    $itemTax = (float)($item->cgst_amount + $item->sgst_amount + $item->igst_amount);
+                @endphp
+                <tr style="border-bottom: 0.5pt solid #cbd5e1; font-size: 7.2pt;">
+                    <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $idx + 1 }}</td>
+                    <td style="padding: 4pt 4pt; text-align: left; border-right: 1pt solid #1e293b;">
+                        <strong>{{ $item->item_description }}</strong>
+                        @if($item->notes)
+                            <div style="font-size: 6.8pt; color: #64748b;">{{ $item->notes }}</div>
+                        @endif
+                    </td>
+                    <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->hsn_sac }}</td>
+                    <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ number_format($item->quantity, 0) }}</td>
+                    <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->unit ?? 'Pcs' }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->unit_price) }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->taxable_amount) }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($itemTax) }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right; font-weight: bold;">{{ formatInvoiceAmount($item->line_total) }}</td>
+                </tr>
+                @endforeach
 
-    <!-- Terms & Signature Footer -->
-    <table style="width: 100%; table-layout: fixed; margin-top: 10px; border-top: 1px solid #cbd5e1; padding-top: 8px;">
-        <tr>
-            <td style="width: 60%; vertical-align: top;">
-                <div style="font-size: 7.5pt; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 2px;">Declaration:</div>
-                <div class="footer-terms">{!! nl2br(e($invoice->terms ?? ($settings->invoice_footer_notes ?? 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.'))) !!}</div>
-            </td>
-            <td style="width: 40%; vertical-align: bottom; text-align: right;">
-                <div style="font-size: 8pt; font-weight: bold; color: #0f172a;">For {{ $settings->company_name }}</div>
-                <div class="signature-box">Authorized Signatory</div>
-            </td>
-        </tr>
-    </table>
+                <!-- Empty Filler Rows to maintain consistent visual invoice height -->
+                @php
+                    $emptyRows = max(0, 10 - count($invoice->items));
+                @endphp
+                @for($i = 0; $i < $emptyRows; $i++)
+                <tr style="height: 18pt;">
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td>&nbsp;</td>
+                </tr>
+                @endfor
+
+                <!-- Summary Row inside Items Table -->
+                @php
+                    $totalQty = $invoice->items->sum('quantity');
+                    $totalTax = (float)($invoice->tax_total ?? ($invoice->cgst_amount + $invoice->sgst_amount + $invoice->igst_amount));
+                    $totalLineSum = $invoice->items->sum('line_total');
+                @endphp
+                <tr style="border-top: 1pt solid #1e293b; font-size: 7.2pt; font-weight: bold;">
+                    <td style="padding: 4pt 2pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="padding: 4pt 4pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="padding: 4pt 2pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ number_format($totalQty, 0) }}</td>
+                    <td style="padding: 4pt 2pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="padding: 4pt 3pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($totalTax) }}</td>
+                    <td style="padding: 4pt 3pt; text-align: right;">{{ formatInvoiceAmount($totalLineSum) }}</td>
+                </tr>
+            </tbody>
+        </table>
+        @if(!empty($isHtmlView))
+        </div>
+        @endif
+
+        <!-- BOTTOM 2-COLUMN SECTION: Bank Details (Left) | Net Amount & Words (Right) -->
+        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
+            <tr>
+                <!-- Left: Bank Details -->
+                <td style="width: 54%; vertical-align: top; padding: 6pt 8pt; border-right: 1pt solid #1e293b; font-size: 7.2pt; line-height: 1.35;">
+                    <div style="font-weight: bold; font-size: 7.6pt; color: #0f172a; margin-bottom: 3pt;">Bank Details</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 7.2pt;">
+                        <tr>
+                            <td style="width: 25%; padding: 1pt 0; color: #334155;">Name</td>
+                            <td style="width: 75%; padding: 1pt 0; font-weight: 600; color: #0f172a;">: {{ $settings->company_name }}</td>
+                        </tr>
+                        @if($settings->account_number)
+                        <tr>
+                            <td style="padding: 1pt 0; color: #334155;">A/C No</td>
+                            <td style="padding: 1pt 0; font-weight: bold; color: #0f172a;">: {{ $settings->account_number }}</td>
+                        </tr>
+                        @endif
+                        @if($settings->bank_name)
+                        <tr>
+                            <td style="padding: 1pt 0; color: #334155;">Bank</td>
+                            <td style="padding: 1pt 0;">: {{ $settings->bank_name }}</td>
+                        </tr>
+                        @endif
+                        @if($settings->ifsc_code)
+                        <tr>
+                            <td style="padding: 1pt 0; color: #334155;">IFSC Code</td>
+                            <td style="padding: 1pt 0; font-weight: bold; color: #0f172a;">: {{ $settings->ifsc_code }}</td>
+                        </tr>
+                        @endif
+                        @if($settings->bank_branch)
+                        <tr>
+                            <td style="padding: 1pt 0; color: #334155;">Branch</td>
+                            <td style="padding: 1pt 0;">: {{ $settings->bank_branch }}</td>
+                        </tr>
+                        @endif
+                    </table>
+                </td>
+
+                <!-- Right: Net Amount & Words -->
+                <td style="width: 46%; vertical-align: top; padding: 6pt 8pt;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 7.2pt;">
+                        <tr>
+                            <td style="color: #334155; padding: 1pt 0;">Subtotal:</td>
+                            <td style="text-align: right; font-weight: 500; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->subtotal) }}</td>
+                        </tr>
+                        @if($invoice->discount_total > 0)
+                        <tr>
+                            <td style="color: #16a34a; padding: 1pt 0;">Discount:</td>
+                            <td style="text-align: right; color: #16a34a; padding: 1pt 0;">- ₹{{ formatInvoiceAmount($invoice->discount_total) }}</td>
+                        </tr>
+                        @endif
+                        <tr>
+                            <td style="color: #334155; padding: 1pt 0; font-weight: 600;">Taxable Amount:</td>
+                            <td style="text-align: right; font-weight: 600; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
+                        </tr>
+                        @if($invoice->is_interstate)
+                        <tr>
+                            <td style="color: #334155; padding: 1pt 0;">IGST:</td>
+                            <td style="text-align: right; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->igst_amount) }}</td>
+                        </tr>
+                        @else
+                        <tr>
+                            <td style="color: #334155; padding: 1pt 0;">CGST:</td>
+                            <td style="text-align: right; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->cgst_amount) }}</td>
+                        </tr>
+                        <tr>
+                            <td style="color: #334155; padding: 1pt 0;">SGST:</td>
+                            <td style="text-align: right; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->sgst_amount) }}</td>
+                        </tr>
+                        @endif
+                        @if(abs($invoice->round_off) > 0.001)
+                        <tr>
+                            <td style="color: #0284c7; padding: 1pt 0;">Round Off:</td>
+                            <td style="text-align: right; color: #0284c7; padding: 1pt 0;">{{ $invoice->round_off > 0 ? '+ ' : '- ' }}₹{{ formatInvoiceAmount(abs($invoice->round_off)) }}</td>
+                        </tr>
+                        @endif
+                        <tr style="border-top: 0.5pt solid #cbd5e1;">
+                            <td style="font-size: 8.5pt; font-weight: bold; color: #0284c7; padding: 2pt 0;">Net Amount</td>
+                            <td style="font-size: 11pt; font-weight: bold; text-align: right; color: #0284c7; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->grand_total) }}</td>
+                        </tr>
+                    </table>
+
+                    <div style="font-size: 7pt; color: #334155; margin-top: 4pt; line-height: 1.3;">
+                        <strong>In Words :</strong> {{ $amountInWords }}
+                    </div>
+
+                    @if($invoice->balance_due > 0 && $invoice->paid_amount > 0)
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 4pt; font-size: 7pt;">
+                        <tr>
+                            <td style="color: #16a34a;">Paid: ₹{{ formatInvoiceAmount($invoice->paid_amount) }}</td>
+                            <td style="text-align: right; color: #b91c1c; font-weight: bold;">Balance: ₹{{ formatInvoiceAmount($invoice->balance_due) }}</td>
+                        </tr>
+                    </table>
+                    @endif
+                </td>
+            </tr>
+        </table>
+
+        <!-- SIGNATURES & BOTTOM BAR -->
+        <div style="padding: 6pt 8pt 4pt 8pt;">
+            <!-- Company Sign-off Line -->
+            <div style="text-align: right; font-size: 7.6pt; font-weight: bold; color: #0f172a; margin-bottom: 30pt;">
+                for {{ $settings->company_name }}
+            </div>
+
+            <!-- Signatures Row -->
+            <table style="width: 100%; table-layout: fixed; font-size: 7.2pt; color: #0f172a; margin-bottom: 8pt;">
+                <tr>
+                    <td style="width: 33%; text-align: left;">Receiver Signature</td>
+                    <td style="width: 34%; text-align: center;">Checked by</td>
+                    <td style="width: 33%; text-align: right;">Authorized Signature</td>
+                </tr>
+            </table>
+
+            <!-- Bottom Disclaimer / Website Bar -->
+            <table style="width: 100%; table-layout: fixed; border-top: 0.5pt solid #cbd5e1; padding-top: 4pt; font-size: 6.8pt; color: #475569;">
+                <tr>
+                    <td style="width: 30%; text-align: left;">{{ $settings->website ?? 'Try billtoday.in' }}</td>
+                    <td style="width: 40%; text-align: center; font-weight: bold; text-transform: uppercase;">THANK YOU! VISIT AGAIN</td>
+                    <td style="width: 30%; text-align: right;">This is software generated invoice</td>
+                </tr>
+            </table>
+        </div>
+
     </div>
 </body>
 </html>

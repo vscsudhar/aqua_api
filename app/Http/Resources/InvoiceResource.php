@@ -31,6 +31,7 @@ class InvoiceResource extends JsonResource
             'sgst_amount' => (float) $this->sgst_amount,
             'igst_amount' => (float) $this->igst_amount,
             'tax_total' => (float) $this->tax_total,
+            'raw_grand_total' => (float) ($this->raw_grand_total ?? ($this->grand_total - $this->round_off)),
             'round_off' => (float) $this->round_off,
             'grand_total' => (float) $this->grand_total,
             'paid_amount' => (float) $this->paid_amount,

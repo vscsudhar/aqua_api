@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\CompanySetting;
+use App\Models\DamagedProduct;
 use App\Models\DealerSupply;
 use App\Models\Product;
 use App\Models\Purchase;
@@ -114,11 +115,12 @@ class BottleLedgerService
         // 1. Calculate opening stock for each product key prior to $startDate
         $priorSupplierQtys = $this->getCumulativeSupplierQuantities($companyId, $startDate->toDateString());
         $priorDealerQtys = $this->getCumulativeDealerQuantities($companyId, $startDate->toDateString());
+        $priorDamagedQtys = $this->getCumulativeDamagedQuantities($companyId, $startDate->toDateString());
 
         $openingStock = [];
         foreach (self::PRODUCT_KEYS as $key) {
             $in = $priorSupplierQtys[$key] ?? 0.0;
-            $out = $priorDealerQtys[$key] ?? 0.0;
+            $out = ($priorDealerQtys[$key] ?? 0.0) + ($priorDamagedQtys[$key] ?? 0.0);
             $openingStock[$key] = round(max(0, $in - $out), 2);
         }
 
@@ -136,9 +138,16 @@ class BottleLedgerService
             ->whereBetween('purchase_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
+        // 3b. Fetch all damaged products for the month
+        $damagedEntries = DamagedProduct::with('product')
+            ->where('company_id', $companyId)
+            ->whereBetween('damage_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->get();
+
         // 4. Initialize daily maps
         $dealerDaily = [];
         $supplierDaily = [];
+        $damageDaily = [];
 
         for ($d = 1; $d <= $daysInMonth; $d++) {
             $dateCarbon = Carbon::createFromDate($year, $month, $d, 'Asia/Kolkata');
@@ -155,6 +164,15 @@ class BottleLedgerService
             ];
 
             $supplierDaily[$dateStr] = [
+                'day' => $dayCode,
+                'date' => $dateStr,
+                'day_name' => $dateCarbon->format('D'),
+                'products' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
+                'quantities' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
+                'total_amount' => 0.0,
+            ];
+
+            $damageDaily[$dateStr] = [
                 'day' => $dayCode,
                 'date' => $dateStr,
                 'day_name' => $dateCarbon->format('D'),
@@ -214,6 +232,29 @@ class BottleLedgerService
             }
         }
 
+        // 6b. Populate Damaged Bottle Ledger Outward
+        foreach ($damagedEntries as $dmg) {
+            $dateStr = Carbon::parse($dmg->damage_date)->toDateString();
+            if (! isset($damageDaily[$dateStr])) {
+                continue;
+            }
+
+            $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
+            $pSku = $dmg->product?->sku ?? '';
+            $key = $this->resolveProductKey($pName, $pSku);
+
+            if (! $key) {
+                continue;
+            }
+
+            $amt = (float) $dmg->total_cost;
+            $qty = (float) $dmg->quantity;
+
+            $damageDaily[$dateStr]['products'][$key] += $amt;
+            $damageDaily[$dateStr]['quantities'][$key] += $qty;
+            $damageDaily[$dateStr]['total_amount'] += $amt;
+        }
+
         // 7. Calculate Monthly Totals for Dealer Table
         $dealerMonthlyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
         $dealerMonthlyQtyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
@@ -240,19 +281,34 @@ class BottleLedgerService
             $supplierGrandTotal += $dayData['total_amount'];
         }
 
-        // 9. Stock Register: Closing = Opening + Inward - Outward
+        // 8b. Calculate Monthly Totals for Damage Table
+        $damageMonthlyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+        $damageMonthlyQtyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+        $damageGrandTotal = 0.0;
+
+        foreach ($damageDaily as $dayData) {
+            foreach (self::PRODUCT_KEYS as $k) {
+                $damageMonthlyTotals[$k] += $dayData['products'][$k];
+                $damageMonthlyQtyTotals[$k] += $dayData['quantities'][$k];
+            }
+            $damageGrandTotal += $dayData['total_amount'];
+        }
+
+        // 9. Stock Register: Closing = Opening + Inward - Outward - Damaged
         $stockRegister = [];
         foreach (self::PRODUCT_KEYS as $k) {
             $op = $openingStock[$k] ?? 0.0;
             $in = $supplierMonthlyQtyTotals[$k] ?? 0.0;
             $out = $dealerMonthlyQtyTotals[$k] ?? 0.0;
-            $cl = round($op + $in - $out, 2);
+            $dmg = $damageMonthlyQtyTotals[$k] ?? 0.0;
+            $cl = round($op + $in - $out - $dmg, 2);
 
             $stockRegister[] = [
                 'product_key' => $k,
                 'opening_qty' => $op,
                 'supplier_inward_qty' => $in,
                 'dealer_outward_qty' => $out,
+                'damaged_outward_qty' => $dmg,
                 'closing_qty' => $cl,
             ];
         }
@@ -280,6 +336,17 @@ class BottleLedgerService
             return $row;
         }, $supplierDaily));
 
+        $damageRows = array_values(array_map(function ($row) {
+            $rowQtyTotal = 0.0;
+            foreach ($row['products'] as $k => $v) {
+                $row['products'][$k] = round($v, 2);
+                $rowQtyTotal += (float) ($row['quantities'][$k] ?? 0.0);
+            }
+            $row['total_amount'] = round($row['total_amount'], 2);
+            $row['total_quantity'] = round($rowQtyTotal, 2);
+            return $row;
+        }, $damageDaily));
+
         // Round totals
         $dealerGrandQtyTotal = 0.0;
         foreach ($dealerMonthlyTotals as $k => $v) {
@@ -292,6 +359,12 @@ class BottleLedgerService
             $supplierMonthlyTotals[$k] = round($v, 2);
             $supplierMonthlyQtyTotals[$k] = round($supplierMonthlyQtyTotals[$k] ?? 0.0, 2);
             $supplierGrandQtyTotal += $supplierMonthlyQtyTotals[$k];
+        }
+        $damageGrandQtyTotal = 0.0;
+        foreach ($damageMonthlyTotals as $k => $v) {
+            $damageMonthlyTotals[$k] = round($v, 2);
+            $damageMonthlyQtyTotals[$k] = round($damageMonthlyQtyTotals[$k] ?? 0.0, 2);
+            $damageGrandQtyTotal += $damageMonthlyQtyTotals[$k];
         }
 
         return [
@@ -320,6 +393,14 @@ class BottleLedgerService
                 'monthly_qty_totals' => $supplierMonthlyQtyTotals,
                 'grand_total' => round($supplierGrandTotal, 2),
                 'grand_qty_total' => round($supplierGrandQtyTotal, 2),
+            ],
+            'damage_table' => [
+                'title' => 'Damage Bottle Ledger',
+                'rows' => $damageRows,
+                'monthly_totals' => $damageMonthlyTotals,
+                'monthly_qty_totals' => $damageMonthlyQtyTotals,
+                'grand_total' => round($damageGrandTotal, 2),
+                'grand_qty_total' => round($damageGrandQtyTotal, 2),
             ],
             'stock_register' => $stockRegister,
         ];
@@ -380,6 +461,30 @@ class BottleLedgerService
     }
 
     /**
+     * Cumulative damaged bottle quantities before a date.
+     */
+    protected function getCumulativeDamagedQuantities(int $companyId, string $beforeDate): array
+    {
+        $totals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+
+        $damaged = DamagedProduct::with('product')
+            ->where('company_id', $companyId)
+            ->where('damage_date', '<', $beforeDate)
+            ->get();
+
+        foreach ($damaged as $dmg) {
+            $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
+            $pSku = $dmg->product?->sku ?? '';
+            $key = $this->resolveProductKey($pName, $pSku);
+            if ($key) {
+                $totals[$key] += (float) $dmg->quantity;
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
      * Get underlying transactions for a daily cell drill-down.
      */
     public function getTransactionDetails(int $companyId, string $date, string $productKey, string $source): array
@@ -414,7 +519,7 @@ class BottleLedgerService
                     }
                 }
             }
-        } else {
+        } elseif ($source === 'supplier') {
             $purchases = Purchase::with(['items.product', 'supplier'])
                 ->where('company_id', $companyId)
                 ->where('status', '!=', 'cancelled')
@@ -440,6 +545,31 @@ class BottleLedgerService
                             'notes' => $purchase->notes ?? '',
                         ];
                     }
+                }
+            }
+        } elseif ($source === 'damage') {
+            $damaged = DamagedProduct::with('product')
+                ->where('company_id', $companyId)
+                ->whereDate('damage_date', $date)
+                ->get();
+
+            foreach ($damaged as $dmg) {
+                $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
+                $pSku = $dmg->product?->sku ?? '';
+                $resolved = $this->resolveProductKey($pName, $pSku);
+
+                if ($resolved === $productKey) {
+                    $transactions[] = [
+                        'party_name' => 'Damage Out (' . $dmg->reason . ')',
+                        'reference_no' => $dmg->damage_no,
+                        'date' => Carbon::parse($dmg->damage_date)->format('d/m/Y'),
+                        'product_key' => $productKey,
+                        'product_name' => $dmg->product_name . ($dmg->variant ? " ({$dmg->variant})" : ''),
+                        'quantity' => (float) $dmg->quantity,
+                        'unit_price' => (float) $dmg->unit_cost,
+                        'total_amount' => (float) $dmg->total_cost,
+                        'notes' => $dmg->remarks ?: $dmg->reason,
+                    ];
                 }
             }
         }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CompanySettingController;
 use App\Http\Controllers\Api\CompanyUserController;
 use App\Http\Controllers\Api\DailyCollectionController;
+use App\Http\Controllers\Api\DamagedProductController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DealerController;
 use App\Http\Controllers\Api\DealerLedgerReportController;
@@ -137,6 +138,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/adjustments', [InventoryController::class, 'adjustmentsIndex']);
             Route::post('/adjustments', [InventoryController::class, 'adjustmentsStore']);
         });
+
+        // Damaged Products Module
+        Route::prefix('damaged-products')->group(function () {
+            Route::get('/next-damage-no', [DamagedProductController::class, 'nextDamageNo']);
+            Route::get('/summary', [DamagedProductController::class, 'summary']);
+            Route::get('/export-pdf', [DamagedProductController::class, 'exportPdf']);
+        });
+        Route::apiResource('damaged-products', DamagedProductController::class);
 
         // Product Master Module
         Route::apiResource('categories', CategoryController::class);

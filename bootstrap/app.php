@@ -13,13 +13,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->redirectGuestsTo(function (Request $request) {
-            if ($request->is('api/*') || $request->expectsJson()) {
-                abort(response()->json(['message' => 'Unauthenticated.'], 401));
-            }
-            return '/';
-        });
-    })
+
+    $middleware->append(
+        \Illuminate\Http\Middleware\HandleCors::class
+    );
+
+    $middleware->redirectGuestsTo(function (Request $request) {
+        if ($request->is('api/*') || $request->expectsJson()) {
+            abort(response()->json(['message' => 'Unauthenticated.'], 401));
+        }
+
+        return '/';
+    });
+
+})
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
