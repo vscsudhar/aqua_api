@@ -73,6 +73,31 @@ class CompanySettingsAndTaxTest extends TestCase
         ]);
     }
 
+    public function test_can_update_bank_details_with_empty_or_null_upi_id(): void
+    {
+        $payload = [
+            'bank_name' => 'State Bank of India',
+            'bank_branch' => 'Thoraipakkam, Chennai',
+            'account_number' => '38992010045',
+            'ifsc_code' => 'SBIN0004567',
+            'upi_id' => '',
+        ];
+
+        $response = $this->actingAs($this->user)
+            ->putJson('/api/v1/company-settings', $payload);
+
+        $response->assertOk()
+            ->assertJsonPath('data.bank_name', 'State Bank of India')
+            ->assertJsonPath('data.account_number', '38992010045')
+            ->assertJsonPath('data.ifsc_code', 'SBIN0004567');
+
+        $this->assertDatabaseHas('company_settings', [
+            'id' => 1,
+            'bank_name' => 'State Bank of India',
+            'account_number' => '38992010045',
+        ]);
+    }
+
     public function test_can_upload_valid_company_logo(): void
     {
         Storage::fake('public');

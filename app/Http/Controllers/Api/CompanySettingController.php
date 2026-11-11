@@ -68,6 +68,18 @@ class CompanySettingController extends Controller
             }
         }
 
+        // Sanitize nullable string fields to empty string to prevent NOT NULL database constraint errors
+        $stringNullableCols = [
+            'upi_id', 'bank_name', 'bank_branch', 'account_number', 'ifsc_code',
+            'tagline', 'website', 'address', 'gstin', 'pan', 'fssai_no',
+            'invoice_footer_notes', 'invoice_prefix',
+        ];
+        foreach ($stringNullableCols as $col) {
+            if (array_key_exists($col, $validated) && $validated[$col] === null) {
+                $validated[$col] = '';
+            }
+        }
+
         $settings->update($validated);
 
         return response()->json([
