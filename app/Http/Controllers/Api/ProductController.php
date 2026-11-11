@@ -10,6 +10,7 @@ use App\Models\Unit;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class ProductController extends Controller
 {
@@ -45,15 +46,19 @@ class ProductController extends Controller
             $query->where('is_active', filter_var($request->query('is_active'), FILTER_VALIDATE_BOOLEAN));
         }
 
+        $hasProductTypeCol = Schema::hasColumn('products', 'product_type');
+
         // 5. Low Stock Filter
         if ($request->boolean('low_stock')) {
-            $query->where('track_stock', true)
-                ->where('product_type', '!=', 'refill')
-                ->whereColumn('current_stock', '<=', 'min_stock_level');
+            $query->where('track_stock', true);
+            if ($hasProductTypeCol) {
+                $query->where('product_type', '!=', 'refill');
+            }
+            $query->whereColumn('current_stock', '<=', 'min_stock_level');
         }
 
         // 6. Product Type Filter (normal, refill)
-        if ($request->filled('product_type')) {
+        if ($request->filled('product_type') && $hasProductTypeCol) {
             $query->where('product_type', $request->query('product_type'));
         }
 
@@ -85,13 +90,15 @@ class ProductController extends Controller
     public function store(ProductRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $hasProductTypeCol = Schema::hasColumn('products', 'product_type');
+
         $data['product_type'] = $data['product_type'] ?? 'normal';
 
         if ($data['product_type'] === 'refill') {
             $data['track_stock'] = false;
             $data['current_stock'] = 0.00;
-            $data['min_stock_level'] = null;
-            $data['cost_price'] = null;
+            $data['min_stock_level'] = $hasProductTypeCol ? null : 0.00;
+            $data['cost_price'] = $hasProductTypeCol ? null : 0.00;
         }
 
         if (! empty($data['unit_id'])) {
@@ -99,6 +106,11 @@ class ProductController extends Controller
             if ($unit) {
                 $data['unit'] = $unit->name;
             }
+        }
+        $data['unit'] = $data['unit'] ?? 'Unit';
+
+        if (! $hasProductTypeCol) {
+            unset($data['product_type']);
         }
 
         $product = Product::create($data);
@@ -130,15 +142,22 @@ class ProductController extends Controller
         }
 
         $data = $request->validated();
-        $productType = $data['product_type'] ?? $product->product_type ?? 'normal';
+        $hasProductTypeCol = Schema::hasColumn('products', 'product_type');
+        $productType = $data['product_type'] ?? ($hasProductTypeCol ? $product->product_type : null) ?? 'normal';
 
         if ($productType === 'refill') {
-            $data['product_type'] = 'refill';
+            if ($hasProductTypeCol) {
+                $data['product_type'] = 'refill';
+            } else {
+                unset($data['product_type']);
+            }
             $data['track_stock'] = false;
             // Preserve hidden fields so they are not accidentally overwritten
             unset($data['cost_price']);
             unset($data['current_stock']);
             unset($data['min_stock_level']);
+        } elseif (! $hasProductTypeCol) {
+            unset($data['product_type']);
         }
 
         if (! empty($data['unit_id'])) {
