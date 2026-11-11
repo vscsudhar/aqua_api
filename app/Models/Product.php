@@ -20,6 +20,7 @@ class Product extends Model
         'unit_id',
         'name',
         'sku',
+        'product_type',
         'unit',
         'description',
         'hsn_code',
@@ -75,9 +76,20 @@ class Product extends Model
         return $this->hasMany(StockAdjustment::class, 'product_id');
     }
 
+    public function isRefill(): bool
+    {
+        return ($this->product_type ?? 'normal') === 'refill';
+    }
+
+    public function isNormal(): bool
+    {
+        return ! $this->isRefill();
+    }
+
     public function isLowStock(): bool
     {
-        if (! $this->track_stock) {
+        // Refill products do not maintain physical inventory and never trigger stock alerts
+        if ($this->isRefill() || ! $this->track_stock) {
             return false;
         }
 

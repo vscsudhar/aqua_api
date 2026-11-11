@@ -207,4 +207,75 @@ class ProductMasterApiTest extends TestCase
         $this->assertNotNull($product);
         $this->assertFalse($product->is_active);
     }
+
+    public function test_refill_product_configuration_and_filtering(): void
+    {
+        $category = ProductCategory::create([
+            'name' => 'Water Service',
+            'code' => 'SERVICE',
+            'is_active' => true,
+        ]);
+
+        $unit = Unit::create([
+            'name' => 'Refill Can',
+            'code' => 'REFILL',
+            'is_active' => true,
+        ]);
+
+        // 1. Create Refill Product (without cost_price, current_stock, min_stock_level)
+        $createRes = $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->postJson('/api/v1/products', [
+                'name' => '20L Can Water Refill',
+                'sku' => 'REFILL-20L',
+                'product_type' => 'refill',
+                'category_id' => $category->id,
+                'unit_id' => $unit->id,
+                'default_price' => 25.00,
+                'tax_rate' => 18.00,
+                'hsn_code' => '2201',
+                'description' => 'Water refill service only (customer jar)',
+            ]);
+
+        $createRes->assertStatus(201)
+            ->assertJsonPath('data.name', '20L Can Water Refill')
+            ->assertJsonPath('data.sku', 'REFILL-20L')
+            ->assertJsonPath('data.product_type', 'refill')
+            ->assertJsonPath('data.default_price', 25)
+            ->assertJsonPath('data.cost_price', null)
+            ->assertJsonPath('data.is_low_stock', false);
+
+        $refillId = $createRes->json('data.id');
+
+        // 2. Update Refill Product selling price
+        $updateRes = $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->putJson("/api/v1/products/{$refillId}", [
+                'name' => '20L Premium Can Water Refill',
+                'sku' => 'REFILL-20L',
+                'product_type' => 'refill',
+                'category_id' => $category->id,
+                'unit_id' => $unit->id,
+                'default_price' => 30.00,
+                'tax_rate' => 18.00,
+            ]);
+
+        $updateRes->assertStatus(200)
+            ->assertJsonPath('data.name', '20L Premium Can Water Refill')
+            ->assertJsonPath('data.default_price', 30)
+            ->assertJsonPath('data.product_type', 'refill');
+
+        // 3. Filter by product_type=refill
+        $refillFilterRes = $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->getJson('/api/v1/products?product_type=refill');
+
+        $refillFilterRes->assertStatus(200)
+            ->assertJsonPath('status', 'success');
+        $this->assertTrue(collect($refillFilterRes->json('data'))->contains('sku', 'REFILL-20L'));
+
+        // 4. Filter by product_type=normal (must not contain refill product)
+        $normalFilterRes = $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->getJson('/api/v1/products?product_type=normal');
+
+        $normalFilterRes->assertStatus(200);
+        $this->assertFalse(collect($normalFilterRes->json('data'))->contains('sku', 'REFILL-20L'));
+    }
 }

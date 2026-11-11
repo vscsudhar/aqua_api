@@ -48,7 +48,13 @@ class ProductController extends Controller
         // 5. Low Stock Filter
         if ($request->boolean('low_stock')) {
             $query->where('track_stock', true)
+                ->where('product_type', '!=', 'refill')
                 ->whereColumn('current_stock', '<=', 'min_stock_level');
+        }
+
+        // 6. Product Type Filter (normal, refill)
+        if ($request->filled('product_type')) {
+            $query->where('product_type', $request->query('product_type'));
         }
 
         $query->orderBy('name', 'asc');
@@ -79,6 +85,14 @@ class ProductController extends Controller
     public function store(ProductRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $data['product_type'] = $data['product_type'] ?? 'normal';
+
+        if ($data['product_type'] === 'refill') {
+            $data['track_stock'] = false;
+            $data['current_stock'] = 0.00;
+            $data['min_stock_level'] = null;
+            $data['cost_price'] = null;
+        }
 
         if (! empty($data['unit_id'])) {
             $unit = Unit::find($data['unit_id']);
@@ -116,6 +130,16 @@ class ProductController extends Controller
         }
 
         $data = $request->validated();
+        $productType = $data['product_type'] ?? $product->product_type ?? 'normal';
+
+        if ($productType === 'refill') {
+            $data['product_type'] = 'refill';
+            $data['track_stock'] = false;
+            // Preserve hidden fields so they are not accidentally overwritten
+            unset($data['cost_price']);
+            unset($data['current_stock']);
+            unset($data['min_stock_level']);
+        }
 
         if (! empty($data['unit_id'])) {
             $unit = Unit::find($data['unit_id']);
