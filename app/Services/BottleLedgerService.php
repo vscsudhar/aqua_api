@@ -33,15 +33,20 @@ class BottleLedgerService
      * Resolve product name/SKU to one of the 8 standard bottle keys.
      * Excludes refills and non-bottle products.
      */
-    public function resolveProductKey(?string $name, ?string $sku = ''): ?string
+    public function resolveProductKey(?string $name, ?string $sku = '', ?string $productType = null): ?string
     {
+        // Strictly exclude Refills by product_type
+        if ($productType === 'refill') {
+            return null;
+        }
+
         $str = strtoupper(trim(($name ?? '') . ' ' . ($sku ?? '')));
 
         if (empty($str)) {
             return null;
         }
 
-        // Strictly exclude Refills
+        // Strictly exclude Refills by name
         if (strpos($str, 'REFILL') !== false || strpos($str, 'REFIL') !== false) {
             return null;
         }
@@ -192,7 +197,8 @@ class BottleLedgerService
             foreach ($supply->items as $item) {
                 $pName = $item->product?->name ?? '';
                 $pSku = $item->product?->sku ?? '';
-                $key = $this->resolveProductKey($pName, $pSku);
+                $pType = $item->product?->product_type ?? null;
+                $key = $this->resolveProductKey($pName, $pSku, $pType);
 
                 if (! $key) {
                     continue; // Skip refill items or unmapped products
@@ -450,7 +456,8 @@ class BottleLedgerService
             foreach ($sup->items as $item) {
                 $pName = $item->product?->name ?? '';
                 $pSku = $item->product?->sku ?? '';
-                $key = $this->resolveProductKey($pName, $pSku);
+                $pType = $item->product?->product_type ?? null;
+                $key = $this->resolveProductKey($pName, $pSku, $pType);
                 if ($key) {
                     $totals[$key] += (float) $item->quantity;
                 }
@@ -502,7 +509,8 @@ class BottleLedgerService
                 foreach ($supply->items as $item) {
                     $pName = $item->product?->name ?? '';
                     $pSku = $item->product?->sku ?? '';
-                    $resolved = $this->resolveProductKey($pName, $pSku);
+                    $pType = $item->product?->product_type ?? null;
+                    $resolved = $this->resolveProductKey($pName, $pSku, $pType);
 
                     if ($resolved === $productKey) {
                         $transactions[] = [

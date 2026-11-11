@@ -78,7 +78,17 @@ class Product extends Model
 
     public function isRefill(): bool
     {
-        return ($this->product_type ?? 'normal') === 'refill';
+        if (($this->product_type ?? 'normal') === 'refill') {
+            return true;
+        }
+
+        // Also consider refill if name or SKU contains 'refill' / 'refil'
+        $name = strtolower($this->name ?? '');
+        $sku = strtolower($this->sku ?? '');
+
+        return str_contains($name, 'refill') ||
+            str_contains($name, 'refil') ||
+            str_contains($sku, 'refill');
     }
 
     public function isNormal(): bool

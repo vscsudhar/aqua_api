@@ -24,16 +24,48 @@ class DealerLedgerReportService
 {
     /**
      * Determines if a product is a 20L / refill water cane (Dealer Ledger = With Refill only).
+     * Considers product_type == 'refill' (even if word 'refill' is missing in the name),
+     * or product name contains 'refill' (even if product_type is missing/normal).
      */
-    public function isRefillCaneProduct(?int $pId, string $prodName, string $prodSku = '', string $prodUnit = '', ?int $caneProductId = null): bool
-    {
-        return ($caneProductId && $pId == $caneProductId) ||
-            (stripos($prodName, '20L') !== false) ||
+    public function isRefillCaneProduct(
+        ?int $pId,
+        string $prodName,
+        string $prodSku = '',
+        string $prodUnit = '',
+        ?int $caneProductId = null,
+        ?string $productType = null
+    ): bool {
+        // 1. Explicit cane product ID match
+        if ($caneProductId && $pId == $caneProductId) {
+            return true;
+        }
+
+        // 2. Explicit product_type == 'refill' (takes priority even if refill word is missing in name)
+        if ($productType === 'refill') {
+            return true;
+        }
+
+        // If product model exists, check its product_type if not passed
+        if ($pId && ! $productType) {
+            $p = Product::find($pId);
+            if ($p && ($p->product_type ?? null) === 'refill') {
+                return true;
+            }
+        }
+
+        // 3. Name or SKU contains 'refill' / 'refil' (even if product_type is not set)
+        if (stripos($prodName, 'refill') !== false ||
+            stripos($prodName, 'refil') !== false ||
+            stripos($prodSku, 'REFILL') !== false) {
+            return true;
+        }
+
+        // 4. Cane / 20L / Jar patterns
+        return (stripos($prodName, '20L') !== false) ||
             (stripos($prodName, '20 L') !== false) ||
             (stripos($prodName, '20-Lit') !== false) ||
             (stripos($prodName, '20Lit') !== false) ||
             (stripos($prodName, '20 Litre') !== false) ||
-            (stripos($prodName, 'refill') !== false && stripos($prodName, '20') !== false) ||
             (stripos($prodName, 'Can') !== false) ||
             (stripos($prodName, 'Cane') !== false) ||
             (stripos($prodName, 'Jar') !== false) ||
@@ -60,7 +92,9 @@ class DealerLedgerReportService
             $caneProduct = Product::find($caneProductId);
         }
         if (! $caneProduct) {
-            $caneProduct = Product::where('name', 'like', '%20L%')
+            $caneProduct = Product::where('product_type', 'refill')
+                ->orWhere('name', 'like', '%refill%')
+                ->orWhere('name', 'like', '%20L%')
                 ->orWhere('name', 'like', '%Can%')
                 ->orWhere('name', 'like', '%Cane%')
                 ->first() ?? Product::first();
@@ -100,7 +134,8 @@ class DealerLedgerReportService
                     $pName = $p?->name ?? $it->notes ?? '';
                     $pSku = $p?->sku ?? '';
                     $pUnit = $it->unit ?? $p?->unit ?? '';
-                    if ($this->isRefillCaneProduct($it->product_id, $pName, $pSku, $pUnit, $caneProductId)) {
+                    $pType = $p?->product_type ?? null;
+                    if ($this->isRefillCaneProduct($it->product_id, $pName, $pSku, $pUnit, $caneProductId, $pType)) {
                         $preDebit += (float) ($it->line_total ?? $it->total_amount ?? ($it->quantity * $it->unit_price));
                     }
                 }
@@ -158,9 +193,10 @@ class DealerLedgerReportService
                 $prodName = $prod?->name ?? $item->notes ?? 'Product #'.$pId;
                 $prodSku = $prod?->sku ?? '';
                 $prodUnit = $item->unit ?? $prod?->unit ?? 'Nos';
+                $prodType = $prod?->product_type ?? null;
 
                 // Check if this item is considered 20L / refill water cane (Dealer Ledger = With Refill only)
-                $isCane = $this->isRefillCaneProduct($pId, $prodName, $prodSku, $prodUnit, $caneProductId);
+                $isCane = $this->isRefillCaneProduct($pId, $prodName, $prodSku, $prodUnit, $caneProductId, $prodType);
 
                 if ($isCane) {
                     $itemAmount = (float) ($item->line_total ?? $item->total_amount ?? ($qty * $item->unit_price));

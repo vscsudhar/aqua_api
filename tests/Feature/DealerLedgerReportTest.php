@@ -467,6 +467,29 @@ class DealerLedgerReportTest extends TestCase
         $this->assertEquals(525.00, (float) $day10['dealers'][$dId]['filling_amount']);
     }
 
+    public function test_refill_product_type_recognized_for_dealer_ledger_even_if_refill_word_missing_in_name(): void
+    {
+        $service = app(\App\Services\DealerLedgerReportService::class);
+
+        // Case 1: product_type == 'refill' with arbitrary name (no 'refill' or '20' word)
+        $this->assertTrue(
+            $service->isRefillCaneProduct(null, '10litre', 'SKU-10L', 'LTR', null, 'refill'),
+            'Product with product_type == refill must be considered for dealer ledger even if word refill is missing in name'
+        );
+
+        // Case 2: Name contains 'refill' even if product_type is null or normal
+        $this->assertTrue(
+            $service->isRefillCaneProduct(null, 'Water Refill Item', 'SKU-001', 'NOS', null, 'normal'),
+            'Product with refill in name must be considered even if product_type is normal'
+        );
+
+        // Case 3: Normal non-refill product without refill keywords
+        $this->assertFalse(
+            $service->isRefillCaneProduct(null, '500ml Bottle Pack', 'BOT-500', 'BOX', null, 'normal'),
+            'Normal non-refill bottled product must not be considered'
+        );
+    }
+
     public function test_dealer_ledger_calculation_flow_for_p1_and_p2_with_taxable_product_and_partial_payments(): void
     {
         // 1. Create a product with tax_rate = 18.00%
