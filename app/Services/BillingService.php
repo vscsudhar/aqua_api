@@ -150,6 +150,7 @@ class BillingService
                 'customer_gstin' => $customerGstin,
                 'place_of_supply' => $placeOfSupply,
                 'is_interstate' => $isInterstate,
+                'invoice_type' => $data['invoice_type'] ?? 'with_gst',
                 'dealer_supply_id' => $data['dealer_supply_id'] ?? null,
                 'subtotal' => 0.00,
                 'discount_total' => 0.00,
@@ -291,6 +292,9 @@ class BillingService
             $invoice->customer_gstin = $customerGstin;
             $invoice->place_of_supply = $placeOfSupply;
             $invoice->is_interstate = $isInterstate;
+            if (isset($data['invoice_type'])) {
+                $invoice->invoice_type = $data['invoice_type'];
+            }
             if (isset($data['notes'])) {
                 $invoice->notes = $data['notes'];
             }
@@ -548,6 +552,7 @@ class BillingService
             ]);
         }
 
+        $isWithoutGst = ($invoice->invoice_type ?? 'with_gst') === 'without_gst';
         $subtotal = 0.00;
         $discountTotal = 0.00;
         $taxableAmountTotal = 0.00;
@@ -560,7 +565,9 @@ class BillingService
             $qty = (float) $itemData['quantity'];
             $price = (float) $itemData['unit_price'];
             $discount = isset($itemData['discount_amount']) ? (float) $itemData['discount_amount'] : 0.00;
-            $taxRate = isset($itemData['tax_rate']) ? (float) $itemData['tax_rate'] : (float) ($product?->tax_rate ?? 0.00);
+            $taxRate = $isWithoutGst
+                ? 0.00
+                : (isset($itemData['tax_rate']) ? (float) $itemData['tax_rate'] : (float) ($product?->tax_rate ?? 0.00));
 
             $calc = $this->computeItemTax($qty, $price, $discount, $taxRate, $isInterstate);
 

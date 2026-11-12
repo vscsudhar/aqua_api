@@ -27,6 +27,7 @@ class Invoice extends Model
         'customer_gstin',
         'place_of_supply',
         'is_interstate',
+        'invoice_type',
         'dealer_supply_id',
         'subtotal',
         'discount_total',
@@ -90,6 +91,16 @@ class Invoice extends Model
     public function isCancelled(): bool
     {
         return $this->status === 'cancelled';
+    }
+
+    public function isWithoutGst(): bool
+    {
+        return strtolower($this->invoice_type ?? '') === 'without_gst';
+    }
+
+    public function isWithGst(): bool
+    {
+        return ! $this->isWithoutGst();
     }
 
     public function dealer(): BelongsTo

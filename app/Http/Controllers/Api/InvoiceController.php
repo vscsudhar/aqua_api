@@ -40,6 +40,18 @@ class InvoiceController extends Controller
             $query->where('payment_status', $request->query('payment_status'));
         }
 
+        if ($request->has('invoice_type') && ! empty($request->query('invoice_type'))) {
+            $invType = $request->query('invoice_type');
+            if ($invType === 'without_gst') {
+                $query->where('invoice_type', 'without_gst');
+            } elseif ($invType === 'with_gst') {
+                $query->where(function ($q) {
+                    $q->where('invoice_type', 'with_gst')
+                        ->orWhereNull('invoice_type');
+                });
+            }
+        }
+
         if ($request->has('start_date') && $request->has('end_date')) {
             $query->whereBetween('invoice_date', [
                 $request->query('start_date'),
@@ -90,6 +102,7 @@ class InvoiceController extends Controller
             'customer_gstin' => ['nullable', 'string', 'max:50'],
             'place_of_supply' => ['nullable', 'string', 'max:100'],
             'is_interstate' => ['nullable', 'boolean'],
+            'invoice_type' => ['nullable', 'string', 'in:with_gst,without_gst'],
             'invoice_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'status' => ['nullable', 'string', 'in:draft,finalized'],
@@ -155,6 +168,7 @@ class InvoiceController extends Controller
             'customer_gstin' => ['nullable', 'string', 'max:50'],
             'place_of_supply' => ['nullable', 'string', 'max:100'],
             'is_interstate' => ['nullable', 'boolean'],
+            'invoice_type' => ['nullable', 'string', 'in:with_gst,without_gst'],
             'invoice_date' => ['nullable', 'date'],
             'due_date' => ['nullable', 'date'],
             'status' => ['nullable', 'string', 'in:draft,finalized'],

@@ -24,7 +24,10 @@ class AppServiceProvider extends ServiceProvider
     {
         // Automatically ensure database schema migrations are applied on deployment
         try {
-            if (Schema::hasTable('products') && ! Schema::hasColumn('products', 'product_type')) {
+            if (
+                (Schema::hasTable('products') && ! Schema::hasColumn('products', 'product_type')) ||
+                (Schema::hasTable('invoices') && ! Schema::hasColumn('invoices', 'invoice_type'))
+            ) {
                 Artisan::call('migrate', ['--force' => true]);
             }
         } catch (\Throwable $e) {

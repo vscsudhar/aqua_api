@@ -22,6 +22,7 @@ class InvoiceResource extends JsonResource
             'customer_gstin' => $this->customer_gstin,
             'place_of_supply' => $this->place_of_supply,
             'is_interstate' => (bool) $this->is_interstate,
+            'invoice_type' => $this->invoice_type ?? ((float) $this->tax_total > 0 ? 'with_gst' : 'without_gst'),
             'dealer_supply_id' => $this->dealer_supply_id,
             'dealer_supply_no' => $this->supply?->supply_no,
             'subtotal' => (float) $this->subtotal,

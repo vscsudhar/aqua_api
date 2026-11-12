@@ -15,7 +15,7 @@
     @if(!empty($isHtmlView))
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     @endif
-    <title>Tax Invoice - {{ $invoice->invoice_no }}</title>
+    <title>{{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'Invoice' : 'Tax Invoice' }} - {{ $invoice->invoice_no }}</title>
     <style>
         @if(!empty($isHtmlView))
         /* ========================================================
@@ -258,9 +258,9 @@
             </tr>
         </table>
 
-        <!-- TAX INVOICE STRIP -->
+        <!-- TAX INVOICE / INVOICE STRIP -->
         <div style="text-align: center; font-size: 8.5pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; padding: 3pt 0; border-top: 1pt solid #1e293b; border-bottom: 1pt solid #1e293b; background: #ffffff;">
-            TAX INVOICE
+            {{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'INVOICE' : 'TAX INVOICE' }}
         </div>
 
         <!-- 2-COLUMN BOX: Customer Details (Left) | Invoice Metadata (Right) -->
@@ -313,18 +313,23 @@
         @if(!empty($isHtmlView))
         <div class="table-responsive-wrapper">
         @endif
+        @php
+            $isWithoutGst = method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : (($invoice->invoice_type ?? '') === 'without_gst');
+        @endphp
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
             <thead>
                 <tr style="border-bottom: 1pt solid #1e293b; background: #ffffff;">
                     <th style="width: 5%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
-                    <th style="width: 31%; padding: 4pt 4pt; font-size: 7pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Prod Name</th>
+                    <th style="width: {{ $isWithoutGst ? '38%' : '31%' }}; padding: 4pt 4pt; font-size: 7pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Prod Name</th>
                     <th style="width: 10%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
                     <th style="width: 7%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
                     <th style="width: 7%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
-                    <th style="width: 9%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
-                    <th style="width: 11%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
+                    <th style="width: {{ $isWithoutGst ? '12%' : '9%' }}; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
+                    <th style="width: {{ $isWithoutGst ? '11%' : '11%' }}; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
+                    @if(!$isWithoutGst)
                     <th style="width: 9%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Tax Amount</th>
-                    <th style="width: 11%; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right;">Total Amount</th>
+                    @endif
+                    <th style="width: {{ $isWithoutGst ? '10%' : '11%' }}; padding: 4pt 3pt; font-size: 7pt; font-weight: bold; text-align: right;">Total Amount</th>
                 </tr>
             </thead>
             <tbody>
@@ -345,7 +350,9 @@
                     <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->unit ?? 'Pcs' }}</td>
                     <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->unit_price) }}</td>
                     <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->taxable_amount) }}</td>
+                    @if(!$isWithoutGst)
                     <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($itemTax) }}</td>
+                    @endif
                     <td style="padding: 4pt 3pt; text-align: right; font-weight: bold;">{{ formatInvoiceAmount($item->line_total) }}</td>
                 </tr>
                 @endforeach
@@ -363,7 +370,9 @@
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    @if(!$isWithoutGst)
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    @endif
                     <td>&nbsp;</td>
                 </tr>
                 @endfor
@@ -382,7 +391,9 @@
                     <td style="padding: 4pt 2pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="padding: 4pt 3pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
+                    @if(!$isWithoutGst)
                     <td style="padding: 4pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($totalTax) }}</td>
+                    @endif
                     <td style="padding: 4pt 3pt; text-align: right;">{{ formatInvoiceAmount($totalLineSum) }}</td>
                 </tr>
             </tbody>
@@ -442,6 +453,7 @@
                             <td style="text-align: right; color: #16a34a; padding: 1pt 0;">- ₹{{ formatInvoiceAmount($invoice->discount_total) }}</td>
                         </tr>
                         @endif
+                        @if(!$isWithoutGst)
                         <tr>
                             <td style="color: #334155; padding: 1pt 0; font-weight: 600;">Taxable Amount:</td>
                             <td style="text-align: right; font-weight: 600; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
@@ -460,6 +472,7 @@
                             <td style="color: #334155; padding: 1pt 0;">SGST:</td>
                             <td style="text-align: right; padding: 1pt 0;">₹{{ formatInvoiceAmount($invoice->sgst_amount) }}</td>
                         </tr>
+                        @endif
                         @endif
                         @if(abs($invoice->round_off) > 0.001)
                         <tr>
