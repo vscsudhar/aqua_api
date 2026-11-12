@@ -9,6 +9,7 @@ use App\Models\DealerSupplyItem;
 use App\Models\Product;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
