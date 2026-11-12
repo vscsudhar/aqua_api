@@ -142,7 +142,7 @@ class BillingService
                 'company_id' => $companyId,
                 'invoice_no' => $invoiceNo,
                 'invoice_date' => $invoiceDate,
-                'due_date' => ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : null,
+                'due_date' => ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : Carbon::parse($invoiceDate)->addDays(15)->toDateString(),
                 'dealer_id' => $dealer?->id,
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
