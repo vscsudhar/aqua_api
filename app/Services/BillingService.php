@@ -14,6 +14,7 @@ use App\Models\Product;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -714,26 +715,31 @@ class BillingService
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: \App\Models\Company::find($companyId);
 
-        $logoBase64 = null;
         $logoPath = $settings->logo_path ?: $company?->logo_path;
         if (! $logoPath && $companyId != 1) {
             $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
             $logoPath = $defaultSettings?->logo_path;
         }
 
-        if ($logoPath && Storage::disk('public')->exists($logoPath)) {
-            $absPath = Storage::disk('public')->path($logoPath);
-            $mime = @mime_content_type($absPath) ?: 'image/png';
-            $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
-        }
+        $logoBase64 = Cache::remember("company_logo_b64_{$companyId}", 86400, function () use ($logoPath) {
+            if ($logoPath && Storage::disk('public')->exists($logoPath)) {
+                $absPath = Storage::disk('public')->path($logoPath);
+                $mime = @mime_content_type($absPath) ?: 'image/png';
+                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+            }
+            return null;
+        });
 
-        return view('invoices.pdf', [
-            'invoice' => $invoice,
-            'settings' => $settings,
-            'logoBase64' => $logoBase64,
-            'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
-            'isHtmlView' => true,
-        ]);
+        $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}";
+        return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoBase64) {
+            return view('invoices.pdf', [
+                'invoice' => $invoice,
+                'settings' => $settings,
+                'logoBase64' => $logoBase64,
+                'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
+                'isHtmlView' => true,
+            ])->render();
+        });
     }
 
     /**

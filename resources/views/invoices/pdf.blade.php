@@ -216,11 +216,11 @@
 
                 <!-- Center: Company Name & Address -->
                 <td style="width: 68%; vertical-align: top; text-align: center; padding: 0 4pt;">
-                    <div style="font-size: 13pt; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15;">
+                    <div style="font-size: 16pt; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.15;">
                         {{ $settings->company_name }}
                     </div>
                     @if($settings->address)
-                        <div style="font-size: 7.2pt; color: #334155; margin-top: 2pt; line-height: 1.25;">
+                        <div style="font-size: 9pt; color: #334155; margin-top: 2pt; line-height: 1.25;">
                             {{ $settings->address }}
                         </div>
                     @endif
@@ -316,7 +316,7 @@
         @php
             $isWithoutGst = method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : (($invoice->invoice_type ?? '') === 'without_gst');
         @endphp
-        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
+        <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b; margin-top: {{ $isWithoutGst ? '12pt' : '0' }};">
             <thead>
                 <tr style="border-bottom: 1pt solid #1e293b; background: #ffffff;">
                     <th style="width: 5%; padding: 4pt 2pt; font-size: 7pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
@@ -359,10 +359,11 @@
 
                 <!-- Empty Filler Rows to maintain consistent visual invoice height -->
                 @php
-                    $emptyRows = max(0, 10 - count($invoice->items));
+                    $targetRows = $isWithoutGst ? 16 : 14;
+                    $emptyRows = max(0, $targetRows - count($invoice->items));
                 @endphp
                 @for($i = 0; $i < $emptyRows; $i++)
-                <tr style="height: 18pt;">
+                <tr style="height: 20pt;">
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>

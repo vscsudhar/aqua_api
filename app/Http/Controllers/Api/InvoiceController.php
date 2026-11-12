@@ -315,9 +315,13 @@ class InvoiceController extends Controller
      */
     public function showHtml(int $id)
     {
-        $invoice = Invoice::findOrFail($id);
+        $invoice = Invoice::with(['company', 'dealer', 'supply', 'items.product', 'payments'])->findOrFail($id);
 
-        return $this->billingService->renderInvoiceHtml($invoice);
+        $html = $this->billingService->renderInvoiceHtml($invoice);
+
+        return response($html)
+            ->header('Content-Type', 'text/html; charset=UTF-8')
+            ->header('Cache-Control', 'public, max-age=300');
     }
 
     /**
