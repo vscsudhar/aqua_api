@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Company;
 use App\Models\CompanySetting;
 use App\Models\CreditNote;
 use App\Models\Dealer;
@@ -14,6 +15,7 @@ use App\Models\Product;
 use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -710,7 +712,7 @@ class BillingService
         $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
         $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
             ?? CompanySetting::getSettings($companyId);
-        $company = $invoice->company ?: \App\Models\Company::find($companyId);
+        $company = $invoice->company ?: Company::find($companyId);
 
         $logoBase64 = null;
         $logoPath = $settings->logo_path ?: $company?->logo_path;
@@ -751,7 +753,7 @@ class BillingService
         $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
         $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
             ?? CompanySetting::getSettings($companyId);
-        $company = $invoice->company ?: \App\Models\Company::find($companyId);
+        $company = $invoice->company ?: Company::find($companyId);
 
         $logoPath = $settings->logo_path ?: $company?->logo_path;
         if (! $logoPath && $companyId != 1) {
