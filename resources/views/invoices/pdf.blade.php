@@ -443,6 +443,26 @@
                         </tr>
                         @endif
                     </table>
+
+                    @if(!empty(trim($invoice->notes ?? '')))
+                    <div style="margin-top: 5pt; font-size: 6.8pt; color: #475569;">
+                        <strong>Notes:</strong> {{ $invoice->notes }}
+                    </div>
+                    @endif
+
+                    @php
+                        $disclaimerText = !empty(trim($invoice->terms ?? '')) 
+                            ? trim($invoice->terms) 
+                            : (!empty(trim($settings->invoice_footer_notes ?? '')) 
+                                ? trim($settings->invoice_footer_notes) 
+                                : '');
+                    @endphp
+                    @if(!empty($disclaimerText))
+                    <div style="margin-top: 5pt; padding: 4pt 6pt; background-color: #f8fafc; border: 0.5pt solid #cbd5e1; border-radius: 3pt;">
+                        <div style="font-size: 6.8pt; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 2pt;">Declaration / Disclaimer:</div>
+                        <div style="font-size: 6.5pt; color: #334155; line-height: 1.35; white-space: pre-line;">{!! nl2br(e($disclaimerText)) !!}</div>
+                    </div>
+                    @endif
                 </td>
 
                 <!-- Right: Net Amount & Words -->

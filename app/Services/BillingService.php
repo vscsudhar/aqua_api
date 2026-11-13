@@ -169,7 +169,9 @@ class BillingService
                 'finalized_at' => $status === 'finalized' ? now() : null,
                 'finalized_by' => $status === 'finalized' ? $user?->id : null,
                 'notes' => $data['notes'] ?? null,
-                'terms' => $data['terms'] ?? $settings->invoice_footer_notes,
+                'terms' => !empty(trim($data['terms'] ?? '')) 
+                    ? trim($data['terms']) 
+                    : ($settings->invoice_footer_notes ?? null),
                 'idempotency_key' => $data['idempotency_key'] ?? null,
                 'created_by' => $user?->id,
             ]);
@@ -299,8 +301,10 @@ class BillingService
             if (isset($data['notes'])) {
                 $invoice->notes = $data['notes'];
             }
-            if (isset($data['terms'])) {
-                $invoice->terms = $data['terms'];
+            if (array_key_exists('terms', $data)) {
+                $invoice->terms = !empty(trim($data['terms'] ?? ''))
+                    ? trim($data['terms'])
+                    : ($settings->invoice_footer_notes ?? null);
             }
             $invoice->updated_by = $user?->id;
 
