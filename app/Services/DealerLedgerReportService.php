@@ -35,6 +35,11 @@ class DealerLedgerReportService
         ?int $caneProductId = null,
         ?string $productType = null
     ): bool {
+        // Strictly exclude Bottle products from Dealer Ledger (maintained in Bottle Ledger)
+        if ($productType === 'bottle') {
+            return false;
+        }
+
         // 1. Explicit cane product ID match
         if ($caneProductId && $pId == $caneProductId) {
             return true;
@@ -48,8 +53,13 @@ class DealerLedgerReportService
         // If product model exists, check its product_type if not passed
         if ($pId && ! $productType) {
             $p = Product::find($pId);
-            if ($p && ($p->product_type ?? null) === 'refill') {
-                return true;
+            if ($p) {
+                if (($p->product_type ?? null) === 'bottle') {
+                    return false;
+                }
+                if (($p->product_type ?? null) === 'refill') {
+                    return true;
+                }
             }
         }
 
@@ -58,6 +68,11 @@ class DealerLedgerReportService
             stripos($prodName, 'refil') !== false ||
             stripos($prodSku, 'REFILL') !== false) {
             return true;
+        }
+
+        // Strictly exclude any bottle references
+        if (stripos($prodName, 'bottle') !== false || stripos($prodSku, 'BOTTLE') !== false) {
+            return false;
         }
 
         // 4. Cane / 20L / Jar patterns
@@ -201,11 +216,8 @@ class DealerLedgerReportService
                 if ($isCane) {
                     $itemAmount = (float) ($item->line_total ?? $item->total_amount ?? ($qty * $item->unit_price));
                     $dailySupplies[$dateStr][$dId]['cane_qty'] += $qty;
-                    // Strict separation: Refill products are count-only in the Dealer Ledger; do not add to filling amount
-                    $isPureRefill = ($prodType === 'refill') || stripos($prodName, 'refill') !== false || stripos($prodName, 'refil') !== false;
-                    if (! $isPureRefill) {
-                        $dailySupplies[$dateStr][$dId]['filling_amount'] += $itemAmount;
-                    }
+                    // Refill products have their amount calculated (quantity * rate) and reflected in filling amount
+                    $dailySupplies[$dateStr][$dId]['filling_amount'] += $itemAmount;
 
                     if (! isset($productBreakdownTotals[$pId])) {
                         $productBreakdownTotals[$pId] = [
@@ -218,9 +230,7 @@ class DealerLedgerReportService
                         ];
                     }
                     $productBreakdownTotals[$pId]['total_quantity'] += $qty;
-                    if (! $isPureRefill) {
-                        $productBreakdownTotals[$pId]['total_amount'] += $itemAmount;
-                    }
+                    $productBreakdownTotals[$pId]['total_amount'] += $itemAmount;
                 }
             }
         }

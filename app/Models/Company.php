@@ -16,6 +16,7 @@ class Company extends Model
     protected $fillable = [
         'company_code',
         'name',
+        'contact_person',
         'logo_path',
         'plan_id',
         'expires_at',
@@ -23,6 +24,7 @@ class Company extends Model
         'email',
         'phone',
         'address',
+        'gstin',
     ];
 
     protected $casts = [

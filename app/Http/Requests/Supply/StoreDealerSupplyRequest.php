@@ -32,6 +32,7 @@ class StoreDealerSupplyRequest extends FormRequest
             'payment_date' => ['nullable', 'date'],
             'payment_reference' => ['nullable', 'string', 'max:100'],
             'payment_notes' => ['nullable', 'string', 'max:500'],
+            'include_in_ledger_amount' => ['nullable', 'boolean'],
         ];
     }
 }

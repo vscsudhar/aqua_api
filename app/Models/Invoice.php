@@ -16,6 +16,8 @@ class Invoice extends Model
 
     protected $fillable = [
         'company_id',
+        'customer_company_id',
+        'customer_type',
         'invoice_no',
         'invoice_date',
         'due_date',
@@ -106,6 +108,11 @@ class Invoice extends Model
     public function dealer(): BelongsTo
     {
         return $this->belongsTo(Dealer::class, 'dealer_id');
+    }
+
+    public function customerCompany(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'customer_company_id');
     }
 
     public function supply(): BelongsTo

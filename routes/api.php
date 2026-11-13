@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BottleLedgerController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\CompanySettingController;
 use App\Http\Controllers\Api\CompanyUserController;
 use App\Http\Controllers\Api\DailyCollectionController;
@@ -162,6 +163,9 @@ Route::prefix('v1')->group(function () {
         Route::delete('dealers/{id}/prices/{priceId}', [DealerPriceController::class, 'destroy']);
         Route::get('dealers/{id}/prices/resolve', [DealerPriceController::class, 'resolvePrice']);
         Route::apiResource('dealers', DealerController::class);
+
+        // Client Companies Onboarding & Management Module
+        Route::apiResource('companies', CompanyController::class)->only(['index', 'store', 'show', 'update']);
 
         // Daily Collection & Supply Module
         Route::prefix('collections')->group(function () {

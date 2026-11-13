@@ -85,17 +85,32 @@ class BillingService
                 ? Carbon::parse($data['invoice_date'], 'Asia/Kolkata')->toDateString()
                 : Carbon::today('Asia/Kolkata')->toDateString();
 
-            // Resolve Customer / Dealer details
+            // Resolve Customer / Dealer / Company details
+            $customerType = $data['customer_type'] ?? (!empty($data['customer_company_id']) ? 'company' : (!empty($data['dealer_id']) ? 'dealer' : 'direct'));
+            $customerCompanyId = !empty($data['customer_company_id']) ? (int) $data['customer_company_id'] : null;
+            $customerCompany = null;
             $dealer = null;
-            if (! empty($data['dealer_id'])) {
+
+            if ($customerType === 'company' && $customerCompanyId) {
+                $customerCompany = Company::find($customerCompanyId);
+            } elseif (!empty($data['dealer_id'])) {
                 $dealer = Dealer::find($data['dealer_id']);
+                $customerType = 'dealer';
             }
 
-            $customerName = $data['customer_name'] ?? ($dealer?->name ?? 'Walk-in Customer');
-            $customerPhone = $data['customer_phone'] ?? $dealer?->phone;
-            $customerEmail = $data['customer_email'] ?? $dealer?->email;
-            $customerAddress = $data['customer_address'] ?? $dealer?->address;
-            $customerGstin = $data['customer_gstin'] ?? $dealer?->gstin;
+            if ($customerCompany) {
+                $customerName = $data['customer_name'] ?? $customerCompany->name;
+                $customerPhone = $data['customer_phone'] ?? $customerCompany->phone;
+                $customerEmail = $data['customer_email'] ?? $customerCompany->email;
+                $customerAddress = $data['customer_address'] ?? $customerCompany->address;
+                $customerGstin = $data['customer_gstin'] ?? $customerCompany->gstin;
+            } else {
+                $customerName = $data['customer_name'] ?? ($dealer?->name ?? 'Walk-in Customer');
+                $customerPhone = $data['customer_phone'] ?? $dealer?->phone;
+                $customerEmail = $data['customer_email'] ?? $dealer?->email;
+                $customerAddress = $data['customer_address'] ?? $dealer?->address;
+                $customerGstin = $data['customer_gstin'] ?? $dealer?->gstin;
+            }
 
             // Place of Supply & Tax Treatment
             $companyStateCode = $settings->state_code ?? '33';
@@ -140,10 +155,12 @@ class BillingService
 
             $invoice = Invoice::create([
                 'company_id' => $companyId,
+                'customer_type' => $customerType,
+                'customer_company_id' => ($customerType === 'company') ? $customerCompanyId : null,
                 'invoice_no' => $invoiceNo,
                 'invoice_date' => $invoiceDate,
                 'due_date' => ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : Carbon::parse($invoiceDate)->addDays(15)->toDateString(),
-                'dealer_id' => $dealer?->id,
+                'dealer_id' => ($customerType === 'company') ? null : $dealer?->id,
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
                 'customer_email' => $customerEmail,
@@ -277,8 +294,25 @@ class BillingService
             if (isset($data['due_date'])) {
                 $invoice->due_date = ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : null;
             }
-            if (! empty($data['dealer_id'])) {
-                $invoice->dealer_id = $data['dealer_id'];
+            if (isset($data['customer_type'])) {
+                $invoice->customer_type = $data['customer_type'];
+            }
+            if (array_key_exists('customer_company_id', $data)) {
+                $invoice->customer_company_id = !empty($data['customer_company_id']) ? (int) $data['customer_company_id'] : null;
+                if ($invoice->customer_type === 'company' || !empty($invoice->customer_company_id)) {
+                    $invoice->customer_type = 'company';
+                    $invoice->dealer_id = null;
+                }
+            }
+            if (array_key_exists('dealer_id', $data)) {
+                if ($invoice->customer_type === 'company') {
+                    $invoice->dealer_id = null;
+                } else {
+                    $invoice->dealer_id = !empty($data['dealer_id']) ? (int) $data['dealer_id'] : null;
+                    if (!empty($invoice->dealer_id)) {
+                        $invoice->customer_type = 'dealer';
+                    }
+                }
             }
             if (isset($data['customer_name'])) {
                 $invoice->customer_name = $data['customer_name'];

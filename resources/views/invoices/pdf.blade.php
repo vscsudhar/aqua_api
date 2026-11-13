@@ -17,17 +17,23 @@
     @endif
     <title>{{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'Invoice' : 'Tax Invoice' }} - {{ $invoice->invoice_no }}</title>
     <style>
-        @if(!empty($isHtmlView))
-        /* ========================================================
-           Interactive Screen View Styling (Browser URL /invoices/{id})
-           ======================================================== */
+        /* Global Page Setup: Equal margins for A4 printing */
+        @page {
+            size: A4 portrait;
+            margin: 8mm 8mm 8mm 8mm;
+        }
+
         *, *::before, *::after {
             box-sizing: border-box;
             -webkit-box-sizing: border-box;
         }
+
+        @if(!empty($isHtmlView))
+        /* ========================================================
+           Interactive Screen View Styling (Browser URL /invoices/{id})
+           ======================================================== */
         html {
             background-color: #f1f5f9;
-            overflow-x: hidden;
         }
         body {
             font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
@@ -38,8 +44,7 @@
             padding: 16px 8px 36px 8px;
             display: block;
             margin: 0 auto;
-            max-width: 100vw;
-            overflow-x: hidden;
+            max-width: 100%;
             -webkit-text-size-adjust: 100%;
         }
         .screen-toolbar {
@@ -117,25 +122,57 @@
             .btn { flex: 1 1 auto; justify-content: center; }
         }
 
+        /* Print Layout Rules - Balanced Margins & Zero Clipping */
         @media print {
-            @page {
-                size: A4 portrait;
-                margin: 8mm 8mm 8mm 8mm;
+            html {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                overflow: visible !important;
             }
-            body { background: #ffffff !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
-            .no-print { display: none !important; }
-            .page-container { width: 100% !important; margin: 0 !important; padding: 0 !important; box-shadow: none !important; border: 1.5px solid #1e293b !important; }
-            .table-responsive-wrapper { overflow: visible !important; }
+            body {
+                background: #ffffff !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: visible !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .page-container {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: 1pt solid #1e293b !important;
+                box-sizing: border-box !important;
+                position: relative !important;
+                overflow: visible !important;
+                page-break-inside: avoid !important;
+            }
+            .table-responsive-wrapper {
+                width: 100% !important;
+                overflow: visible !important;
+            }
+            table {
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+                table-layout: fixed !important;
+            }
         }
 
         @else
         /* ========================================================
            Strict PDF Print Engine Styling (Dompdf Output)
            ======================================================== */
-        @page {
-            size: A4 portrait;
-            margin: 8mm 8mm 8mm 8mm;
-        }
         body {
             font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif;
             font-size: 8pt;
@@ -163,6 +200,16 @@
             box-sizing: border-box;
         }
         .cancelled-watermark {
+            position: fixed;
+            top: 35%;
+            left: 20%;
+            font-size: 55pt;
+            color: rgba(239, 68, 68, 0.18);
+            font-weight: bold;
+            transform: rotate(-30deg);
+            z-index: 1000;
+        }
+    </style>
             position: fixed;
             top: 35%;
             left: 20%;
@@ -209,53 +256,53 @@
             <table style="width: 100%; table-layout: fixed; border-collapse: collapse;">
                 <tr>
                     <!-- Left Corner: Logo -->
-                    <td style="width: 18%; vertical-align: middle; text-align: left;">
+                    <td style="width: 20%; vertical-align: middle; text-align: left;">
                         @if(!empty($logoBase64))
-                            <img src="{{ $logoBase64 }}" style="max-height: 52px; max-width: 110px; object-fit: contain;" alt="Logo" />
+                            <img src="{{ $logoBase64 }}" style="max-height: 68px; max-width: 130px; object-fit: contain;" alt="Logo" />
                         @endif
                     </td>
 
                     <!-- Center: Company Name & Address with professional breathing room -->
-                    <td style="width: 64%; vertical-align: top; text-align: center; padding: 2pt 8pt 0 8pt;">
-                        <div style="font-size: 16pt; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.25; margin-bottom: 4pt;">
+                    <td style="width: 60%; vertical-align: top; text-align: center; padding: 2pt 8pt 0 8pt;">
+                        <div style="font-size: 18pt; font-weight: bold; color: #0f172a; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.25; margin-bottom: 4pt;">
                             {{ $settings->company_name }}
                         </div>
                         @if($settings->address)
-                            <div style="font-size: 8.8pt; color: #334155; line-height: 1.35; padding: 0 6pt;">
+                            <div style="font-size: 9.8pt; color: #334155; line-height: 1.35; padding: 0 6pt;">
                                 {{ $settings->address }}
                             </div>
                         @endif
                     </td>
 
                     <!-- Right Corner: Copy Marker -->
-                    <td style="width: 18%; vertical-align: top; text-align: right; padding-top: 2pt;">
-                        <div style="font-size: 7.2pt; color: #003366; font-weight: bold; border: 0.8pt solid #003366; padding: 3pt 6pt; border-radius: 2.5pt; display: inline-block;">
+                    <td style="width: 20%; vertical-align: top; text-align: right; padding-top: 2pt;">
+                        <div style="font-size: 8pt; color: #003366; font-weight: bold; border: 0.8pt solid #003366; padding: 3pt 6pt; border-radius: 2.5pt; display: inline-block;">
                             {{ strtoupper($copyType ?? ((method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : (($invoice->invoice_type ?? '') === 'without_gst')) ? 'Original for Customer' : 'Original for Recipient')) }}
                         </div>
                     </td>
                 </tr>
             </table>
 
-            <!-- COMPANY CONTACT ROW: Left (Email, GSTIN) | Right (Phone, FSSAI NO) -->
-            <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8pt; font-size: 7.5pt; color: #1e293b; line-height: 1.4;">
+            <!-- COMPANY CONTACT ROW: Left (GSTIN, FSSAI NO) | Right (Phone, Email) -->
+            <table style="width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 8pt; font-size: 8.5pt; color: #1e293b; line-height: 1.4;">
                 <tr>
-                    <!-- Left: Email & GSTIN -->
+                    <!-- Left: GSTIN (bold & font +2) & optional FSSAI NO -->
                     <td style="width: 50%; vertical-align: bottom; text-align: left;">
-                        @if($settings->email)
-                            <div><strong>Email :</strong> {{ $settings->email }}</div>
+                        @if(!empty(trim($settings->gstin ?? '')))
+                            <div style="font-size: 10.5pt; font-weight: bold; color: #0f172a;"><strong>GSTIN :</strong> {{ $settings->gstin }}</div>
                         @endif
-                        @if($settings->gstin)
-                            <div style="margin-top: 1.5pt;"><strong>GSTIN :</strong> {{ $settings->gstin }}</div>
+                        @if(!empty(trim($settings->fssai_no ?? '')) && strtolower(trim($settings->fssai_no ?? '')) !== 'null')
+                            <div style="margin-top: 2pt; font-size: 8.5pt;"><strong>FSSAI NO :</strong> {{ $settings->fssai_no }}</div>
                         @endif
                     </td>
 
-                    <!-- Right: Phone & FSSAI NO -->
+                    <!-- Right: Phone & Email -->
                     <td style="width: 50%; vertical-align: bottom; text-align: right;">
-                        @if($settings->phone)
+                        @if(!empty(trim($settings->phone ?? '')))
                             <div><strong>Phone :</strong> {{ $settings->phone }}</div>
                         @endif
-                        @if(!empty($settings->fssai_no))
-                            <div style="margin-top: 1.5pt;"><strong>FSSAI NO :</strong> {{ $settings->fssai_no }}</div>
+                        @if(!empty(trim($settings->email ?? '')))
+                            <div style="margin-top: 1.5pt;"><strong>Email :</strong> {{ $settings->email }}</div>
                         @endif
                     </td>
                 </tr>
@@ -263,7 +310,7 @@
         </div>
 
         <!-- TAX INVOICE / INVOICE STRIP -->
-        <div style="text-align: center; font-size: 9pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; padding: 5pt 0; border-top: 1pt solid #1e293b; border-bottom: 1pt solid #1e293b; background: #ffffff;">
+        <div style="text-align: center; font-size: 11pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 1.2px; padding: 5pt 0; border-top: 1pt solid #1e293b; border-bottom: 1pt solid #1e293b; background: #ffffff;">
             {{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'INVOICE' : 'TAX INVOICE' }}
         </div>
 
@@ -271,27 +318,27 @@
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
             <tr>
                 <!-- Left Box: Customer Details -->
-                <td style="width: 54%; vertical-align: top; padding: 8pt 14pt; border-right: 1pt solid #1e293b; font-size: 7.5pt; color: #1e293b; line-height: 1.45;">
-                    <div style="font-weight: bold; color: #0f172a; font-size: 8.5pt; margin-bottom: 3pt;">
+                <td style="width: 54%; vertical-align: top; padding: 8pt 14pt; border-right: 1pt solid #1e293b; font-size: 8.8pt; color: #1e293b; line-height: 1.45;">
+                    <div style="font-weight: bold; color: #0f172a; font-size: 10.5pt; margin-bottom: 3pt;">
                         TO : {{ strtoupper($invoice->customer_name) }}
                     </div>
                     @if($invoice->customer_address)
-                        <div style="margin-bottom: 2pt; color: #334155;">{{ $invoice->customer_address }}</div>
+                        <div style="margin-bottom: 2pt; color: #334155; font-size: 8.8pt;">{{ $invoice->customer_address }}</div>
                     @endif
                     @if($invoice->place_of_supply)
-                        <div style="margin-bottom: 2pt; font-weight: 500;">{{ strtoupper($invoice->place_of_supply) }}</div>
+                        <div style="margin-bottom: 2pt; font-weight: 500; font-size: 8.8pt;">{{ strtoupper($invoice->place_of_supply) }}</div>
                     @endif
                     @if($invoice->customer_phone)
                         <div><strong>Phone :</strong> {{ $invoice->customer_phone }}</div>
                     @endif
                     @if($invoice->customer_gstin)
-                        <div style="margin-top: 2pt;"><strong>GSTIN :</strong> {{ $invoice->customer_gstin }}</div>
+                        <div style="margin-top: 2pt; font-size: 9.5pt; font-weight: bold;"><strong>GSTIN :</strong> {{ $invoice->customer_gstin }}</div>
                     @endif
                 </td>
 
                 <!-- Right Box: Invoice Metadata -->
-                <td style="width: 46%; vertical-align: top; padding: 8pt 14pt; font-size: 7.5pt; line-height: 1.5;">
-                    <table style="width: 100%; border-collapse: collapse;">
+                <td style="width: 46%; vertical-align: top; padding: 8pt 14pt; font-size: 8.8pt; line-height: 1.5;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
                         <tr>
                             <td style="width: 38%; padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice No</td>
                             <td style="width: 62%; padding: 2pt 0; font-weight: bold; color: #0f172a;">: {{ $invoice->invoice_no }}</td>
@@ -299,10 +346,6 @@
                         <tr>
                             <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice Date</td>
                             <td style="padding: 2pt 0;">: {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') }}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice Time</td>
-                            <td style="padding: 2pt 0;">: {{ \Carbon\Carbon::parse($invoice->created_at)->format('g:i:s A') }}</td>
                         </tr>
                         <tr>
                             <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Payment Mode</td>
@@ -411,9 +454,9 @@
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
             <tr>
                 <!-- Left: Bank Details -->
-                <td style="width: 54%; vertical-align: top; padding: 10pt 14pt; border-right: 1pt solid #1e293b; font-size: 7.2pt; line-height: 1.4;">
-                    <div style="font-weight: bold; font-size: 7.8pt; color: #0f172a; margin-bottom: 4pt;">Bank Details</div>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 7.2pt;">
+                <td style="width: 54%; vertical-align: top; padding: 10pt 14pt; border-right: 1pt solid #1e293b; font-size: 8.5pt; line-height: 1.4;">
+                    <div style="font-weight: bold; font-size: 9.5pt; color: #0f172a; margin-bottom: 4pt;">Bank Details</div>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt;">
                         <tr>
                             <td style="width: 25%; padding: 2pt 0; color: #334155;">Name</td>
                             <td style="width: 75%; padding: 2pt 0; font-weight: 600; color: #0f172a;">: {{ $settings->company_name }}</td>
@@ -445,7 +488,7 @@
                     </table>
 
                     @if(!empty(trim($invoice->notes ?? '')))
-                    <div style="margin-top: 5pt; font-size: 6.8pt; color: #475569;">
+                    <div style="margin-top: 5pt; font-size: 8pt; color: #475569;">
                         <strong>Notes:</strong> {{ $invoice->notes }}
                     </div>
                     @endif
@@ -459,15 +502,15 @@
                     @endphp
                     @if(!empty($disclaimerText))
                     <div style="margin-top: 5pt; padding: 4pt 6pt; background-color: #f8fafc; border: 0.5pt solid #cbd5e1; border-radius: 3pt;">
-                        <div style="font-size: 6.8pt; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 2pt;">Declaration / Disclaimer:</div>
-                        <div style="font-size: 6.5pt; color: #334155; line-height: 1.35; white-space: pre-line;">{!! nl2br(e($disclaimerText)) !!}</div>
+                        <div style="font-size: 8pt; font-weight: bold; color: #0284c7; text-transform: uppercase; margin-bottom: 2pt;">Declaration / Disclaimer:</div>
+                        <div style="font-size: 7.8pt; color: #334155; line-height: 1.35; white-space: pre-line;">{!! nl2br(e($disclaimerText)) !!}</div>
                     </div>
                     @endif
                 </td>
 
                 <!-- Right: Net Amount & Words -->
                 <td style="width: 46%; vertical-align: top; padding: 10pt 14pt;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 7.2pt;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
                         <tr>
                             <td style="color: #334155; padding: 2pt 0;">Subtotal:</td>
                             <td style="text-align: right; font-weight: 500; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->subtotal) }}</td>
@@ -506,17 +549,17 @@
                         </tr>
                         @endif
                         <tr style="border-top: 0.5pt solid #cbd5e1;">
-                            <td style="font-size: 8.5pt; font-weight: bold; color: #0284c7; padding: 3pt 0;">Net Amount</td>
-                            <td style="font-size: 11pt; font-weight: bold; text-align: right; color: #0284c7; padding: 3pt 0;">₹{{ formatInvoiceAmount($invoice->grand_total) }}</td>
+                            <td style="font-size: 10.5pt; font-weight: bold; color: #0284c7; padding: 3pt 0;">Net Amount</td>
+                            <td style="font-size: 13.5pt; font-weight: bold; text-align: right; color: #0284c7; padding: 3pt 0;">₹{{ formatInvoiceAmount($invoice->grand_total) }}</td>
                         </tr>
                     </table>
 
-                    <div style="font-size: 7pt; color: #334155; margin-top: 5pt; line-height: 1.35;">
+                    <div style="font-size: 8.5pt; color: #334155; margin-top: 5pt; line-height: 1.35;">
                         <strong>In Words :</strong> {{ $amountInWords }}
                     </div>
 
                     @if($invoice->balance_due > 0 && $invoice->paid_amount > 0)
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 5pt; font-size: 7pt;">
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 5pt; font-size: 8.5pt;">
                         <tr>
                             <td style="color: #16a34a; padding: 1pt 0;">Paid: ₹{{ formatInvoiceAmount($invoice->paid_amount) }}</td>
                             <td style="text-align: right; color: #b91c1c; font-weight: bold; padding: 1pt 0;">Balance: ₹{{ formatInvoiceAmount($invoice->balance_due) }}</td>
@@ -530,21 +573,21 @@
         <!-- SIGNATURES & BOTTOM BAR -->
         <div style="padding: 10pt 14pt 8pt 14pt;">
             <!-- Company Sign-off Line -->
-            <div style="text-align: right; font-size: 7.6pt; font-weight: bold; color: #0f172a; margin-bottom: 28pt;">
+            <div style="text-align: right; font-size: 9pt; font-weight: bold; color: #0f172a; margin-bottom: 26pt;">
                 for {{ $settings->company_name }}
             </div>
 
             <!-- Signatures Row -->
-            <table style="width: 100%; table-layout: fixed; font-size: 7.2pt; color: #0f172a; margin-bottom: 8pt;">
+            <table style="width: 100%; table-layout: fixed; font-size: 8.5pt; color: #0f172a; margin-bottom: 8pt;">
                 <tr>
-                    <td style="width: 33%; text-align: left;">Receiver Signature</td>
-                    <td style="width: 34%; text-align: center;">Checked by</td>
-                    <td style="width: 33%; text-align: right;">Authorized Signature</td>
+                    <td style="width: 33%; text-align: left; font-weight: 600;">Receiver Signature</td>
+                    <td style="width: 34%; text-align: center; font-weight: 600;">Checked by</td>
+                    <td style="width: 33%; text-align: right; font-weight: 600;">Authorized Signature</td>
                 </tr>
             </table>
 
             <!-- Bottom Disclaimer Bar -->
-            <table style="width: 100%; table-layout: fixed; border-top: 0.5pt solid #cbd5e1; padding-top: 5pt; font-size: 6.8pt; color: #475569;">
+            <table style="width: 100%; table-layout: fixed; border-top: 0.5pt solid #cbd5e1; padding-top: 5pt; font-size: 7.8pt; color: #475569;">
                 <tr>
                     <td style="width: 30%; text-align: left;">&nbsp;</td>
                     <td style="width: 40%; text-align: center; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">THANK YOU! VISIT AGAIN</td>

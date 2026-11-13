@@ -23,7 +23,7 @@ class InvoiceController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Invoice::with(['dealer', 'supply', 'items', 'creator'])
+        $query = Invoice::with(['dealer', 'supply', 'items', 'creator', 'customerCompany'])
             ->withCount('items')
             ->orderBy('invoice_date', 'desc')
             ->orderBy('id', 'desc');
@@ -93,6 +93,8 @@ class InvoiceController extends Controller
     {
         $validated = $request->validate([
             'invoice_no' => ['nullable', 'string', 'max:50'],
+            'customer_type' => ['nullable', 'string', 'in:dealer,company,direct'],
+            'customer_company_id' => ['nullable', 'exists:companies,id'],
             'dealer_id' => ['nullable', 'exists:dealers,id'],
             'dealer_supply_id' => ['nullable', 'exists:dealer_supplies,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
@@ -141,7 +143,7 @@ class InvoiceController extends Controller
      */
     public function show(int $id): JsonResponse
     {
-        $invoice = Invoice::with(['dealer', 'supply', 'items.product', 'payments.creator', 'creditNotes.creator', 'creator', 'finalizer', 'canceller'])
+        $invoice = Invoice::with(['dealer', 'customerCompany', 'supply', 'items.product', 'payments.creator', 'creditNotes.creator', 'creator', 'finalizer', 'canceller'])
             ->findOrFail($id);
 
         return response()->json([
@@ -160,6 +162,8 @@ class InvoiceController extends Controller
 
         $validated = $request->validate([
             'invoice_no' => ['nullable', 'string', 'max:50'],
+            'customer_type' => ['nullable', 'string', 'in:dealer,company,direct'],
+            'customer_company_id' => ['nullable', 'exists:companies,id'],
             'dealer_id' => ['nullable', 'exists:dealers,id'],
             'customer_name' => ['nullable', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'string', 'max:50'],
