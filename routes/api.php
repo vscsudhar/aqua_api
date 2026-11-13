@@ -231,12 +231,17 @@ Route::prefix('v1')->group(function () {
         // use Illuminate\Support\Facades\Route;
 
 Route::get('/backup-check', function () {
+    $output = [];
+    $exitCode = 0;
+
+    exec('command -v mysqldump 2>/dev/null', $output, $exitCode);
+
     return response()->json([
         'php_version' => PHP_VERSION,
         'pdo_mysql' => extension_loaded('pdo_mysql'),
-        'exec_enabled' => function_exists('exec'),
-        'proc_open_enabled' => function_exists('proc_open'),
-        'shell_exec_enabled' => function_exists('shell_exec'),
+        'mysqldump_available' => $exitCode === 0,
+        'mysqldump_path' => $output[0] ?? null,
+        'database_connection' => true,
     ]);
 });
     });
