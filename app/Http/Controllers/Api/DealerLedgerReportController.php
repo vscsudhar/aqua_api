@@ -98,6 +98,28 @@ class DealerLedgerReportController extends Controller
     }
 
     /**
+     * Retrieves all original source transactions contributing to a specific dealer cell on a given date.
+     */
+    public function cellTransactions(Request $request): JsonResponse
+    {
+        $request->validate([
+            'dealer_id' => ['required', 'integer'],
+            'date' => ['required', 'date'],
+        ]);
+
+        $dealerId = (int) $request->input('dealer_id');
+        $date = (string) $request->input('date');
+
+        $result = $this->reportService->getCellTransactions($dealerId, $date);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Cell transactions retrieved successfully.',
+            'data' => $result,
+        ]);
+    }
+
+    /**
      * Exports A4 landscape PDF.
      */
     public function exportPdf(Request $request)

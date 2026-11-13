@@ -100,7 +100,6 @@ class DailyCollectionService
 
                 DealerSupplyItem::create([
                     'dealer_supply_id' => $supply->id,
-                    'supply_id' => $supply->id,
                     'product_id' => $product->id,
                     'quantity' => $quantity,
                     'unit' => $itemData['unit'] ?? $product->unit,
@@ -140,6 +139,11 @@ class DailyCollectionService
                     $payCount++;
                 } while ((clone $payQuery)->where('payment_no', $paymentNo)->exists());
 
+                $includeInLedger = true;
+                if (array_key_exists('include_in_ledger_amount', $data)) {
+                    $includeInLedger = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
+                }
+
                 $payment = DealerPayment::create([
                     'company_id' => $companyId,
                     'payment_no' => $paymentNo,
@@ -154,6 +158,7 @@ class DailyCollectionService
                     'status' => 'completed',
                     'remarks' => $data['payment_notes'] ?? null,
                     'notes' => $data['payment_notes'] ?? null,
+                    'include_in_ledger_amount' => $includeInLedger,
                     'collected_by' => $user?->id,
                     'created_by' => $user?->id,
                 ]);
@@ -161,8 +166,9 @@ class DailyCollectionService
                 // Synchronize payment credit ledger entry
                 $payment->syncLedgerEntry($user?->id);
 
-                // Update supply paid amount
-                $supply->paid_amount = $payAmount;
+                // Update supply paid amount (capped at supply's total amount)
+                $supplyPaid = min($totalAmount, $payAmount);
+                $supply->paid_amount = $supplyPaid;
                 $supply->outstanding_amount = round(max(0.0, $totalAmount - $payAmount), 2);
                 if ($payAmount >= $totalAmount) {
                     $supply->payment_status = 'paid';
@@ -238,7 +244,6 @@ class DailyCollectionService
 
                     DealerSupplyItem::create([
                         'dealer_supply_id' => $supply->id,
-                        'supply_id' => $supply->id,
                         'product_id' => $product->id,
                         'quantity' => $quantity,
                         'unit' => $itemData['unit'] ?? $product->unit,
@@ -260,12 +265,47 @@ class DailyCollectionService
             $supply->recalculateFinancials(true);
             $supply->syncLedgerEntry($user?->id);
 
+            // If supply date changed, synchronize linked payment dates as well
+            if (! empty($data['supply_date'])) {
+                foreach ($supply->payments as $linkedPayment) {
+                    $linkedPayment->payment_date = $supplyDate;
+                    $linkedPayment->save();
+                    $linkedPayment->syncLedgerEntry($user?->id);
+                }
+            }
+
             // Re-record stock issue for updated items (tracked items only)
             if (! empty($data['items']) && is_array($data['items'])) {
                 app(InventoryService::class)->recordSupplyStockIssue($supply, $user);
             }
 
             return $supply->load(['dealer', 'items.product', 'payments']);
+        });
+    }
+
+    /**
+     * Delete an existing supply transaction and reverse its inventory and ledger impacts.
+     */
+    public function deleteSupply(DealerSupply $supply, ?User $user = null): bool
+    {
+        return DB::transaction(function () use ($supply, $user) {
+            // 1. Reverse stock issues if tracked
+            app(InventoryService::class)->reverseSupplyStockIssue($supply, $user);
+
+            // 2. Delete ledger entry for the supply
+            $supply->ledgerEntry()?->delete();
+
+            // 3. Delete linked payments and their ledger entries
+            foreach ($supply->payments as $payment) {
+                $payment->ledgerEntry()?->delete();
+                $payment->delete();
+            }
+
+            // 4. Delete items
+            $supply->items()->delete();
+
+            // 5. Delete supply record
+            return (bool) $supply->delete();
         });
     }
 
@@ -307,6 +347,11 @@ class DailyCollectionService
                 $count++;
             } while ((clone $payQuery)->where('payment_no', $paymentNo)->exists());
 
+            $includeInLedger = true;
+            if (array_key_exists('include_in_ledger_amount', $data)) {
+                $includeInLedger = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
+            }
+
             $payment = DealerPayment::create([
                 'company_id' => $companyId,
                 'payment_no' => $paymentNo,
@@ -321,6 +366,7 @@ class DailyCollectionService
                 'status' => 'completed',
                 'remarks' => $data['notes'] ?? ($data['remarks'] ?? null),
                 'notes' => $data['notes'] ?? ($data['remarks'] ?? null),
+                'include_in_ledger_amount' => $includeInLedger,
                 'collected_by' => $user?->id,
                 'created_by' => $user?->id,
             ]);
@@ -337,6 +383,75 @@ class DailyCollectionService
             $payment->syncLedgerEntry($user?->id);
 
             return $payment->load(['dealer', 'supply']);
+        });
+    }
+
+    /**
+     * Update an existing payment record and synchronize ledger and supply.
+     */
+    public function updatePayment(DealerPayment $payment, array $data, ?User $user = null): DealerPayment
+    {
+        return DB::transaction(function () use ($payment, $data, $user) {
+            if (! empty($data['payment_date'])) {
+                $payment->payment_date = Carbon::parse($data['payment_date'], 'Asia/Kolkata')->toDateString();
+            }
+            if (isset($data['payment_method']) || isset($data['payment_mode'])) {
+                $method = $data['payment_method'] ?? $data['payment_mode'];
+                $payment->payment_method = $method;
+                $payment->payment_mode = $method;
+            }
+            if (array_key_exists('reference_no', $data)) {
+                $payment->reference_no = $data['reference_no'];
+            }
+            if (array_key_exists('remarks', $data)) {
+                $payment->remarks = $data['remarks'];
+            }
+            if (array_key_exists('notes', $data)) {
+                $payment->notes = $data['notes'];
+            }
+            if (isset($data['amount']) && (float) $data['amount'] > 0) {
+                $payment->amount = (float) $data['amount'];
+            }
+            if (array_key_exists('include_in_ledger_amount', $data)) {
+                $payment->include_in_ledger_amount = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
+            }
+            $payment->updated_by = $user?->id;
+            $payment->save();
+
+            // Sync ledger entry
+            $payment->syncLedgerEntry($user?->id);
+
+            // If linked to supply, update supply financials
+            if ($payment->dealer_supply_id) {
+                $supply = $payment->supply;
+                $supply?->recalculateFinancials(true);
+            }
+
+            return $payment->load(['dealer', 'supply']);
+        });
+    }
+
+    /**
+     * Delete an existing payment record and reverse ledger entries and supply amounts.
+     */
+    public function deletePayment(DealerPayment $payment, ?User $user = null): bool
+    {
+        return DB::transaction(function () use ($payment, $user) {
+            // Delete ledger entry
+            $payment->ledgerEntry()?->delete();
+
+            $supplyId = $payment->dealer_supply_id;
+
+            // Delete payment
+            $deleted = $payment->delete();
+
+            // If linked to supply, recalculate supply financials
+            if ($supplyId) {
+                $supply = DealerSupply::find($supplyId);
+                $supply?->recalculateFinancials(true);
+            }
+
+            return (bool) $deleted;
         });
     }
 

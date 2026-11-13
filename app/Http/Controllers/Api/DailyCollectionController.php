@@ -151,6 +151,20 @@ class DailyCollectionController extends Controller
     }
 
     /**
+     * Delete supply transaction and reverse inventory and ledger.
+     */
+    public function suppliesDestroy(Request $request, int $id): JsonResponse
+    {
+        $supply = DealerSupply::findOrFail($id);
+        $this->collectionService->deleteSupply($supply, $request->user());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Supply transaction deleted successfully.',
+        ]);
+    }
+
+    /**
      * List payment transactions.
      */
     public function paymentsIndex(Request $request): JsonResponse
@@ -200,5 +214,60 @@ class DailyCollectionController extends Controller
             'message' => $isNew ? 'Payment collection recorded successfully.' : 'Existing payment retrieved (idempotent).',
             'data' => new DealerPaymentResource($payment),
         ], $isNew ? 201 : 200);
+    }
+
+    /**
+     * Show single payment details.
+     */
+    public function paymentsShow(int $id): JsonResponse
+    {
+        $payment = DealerPayment::with(['dealer', 'supply', 'collector'])->findOrFail($id);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment details retrieved.',
+            'data' => new DealerPaymentResource($payment),
+        ]);
+    }
+
+    /**
+     * Update an existing payment transaction.
+     */
+    public function paymentsUpdate(Request $request, int $id): JsonResponse
+    {
+        $payment = DealerPayment::findOrFail($id);
+
+        $validated = $request->validate([
+            'payment_date' => ['sometimes', 'date'],
+            'amount' => ['sometimes', 'numeric', 'gt:0'],
+            'payment_method' => ['sometimes', 'string', 'max:50'],
+            'payment_mode' => ['sometimes', 'string', 'max:50'],
+            'reference_no' => ['nullable', 'string', 'max:100'],
+            'remarks' => ['nullable', 'string', 'max:500'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'include_in_ledger_amount' => ['nullable', 'boolean'],
+        ]);
+
+        $updated = $this->collectionService->updatePayment($payment, $validated, $request->user());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment updated successfully.',
+            'data' => new DealerPaymentResource($updated),
+        ]);
+    }
+
+    /**
+     * Delete an existing payment transaction.
+     */
+    public function paymentsDestroy(Request $request, int $id): JsonResponse
+    {
+        $payment = DealerPayment::findOrFail($id);
+        $this->collectionService->deletePayment($payment, $request->user());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment transaction deleted successfully.',
+        ]);
     }
 }

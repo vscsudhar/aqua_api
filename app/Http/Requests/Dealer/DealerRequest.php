@@ -25,7 +25,7 @@ class DealerRequest extends FormRequest
                 Rule::unique('dealers', 'code')->ignore($dealerId)->whereNull('deleted_at'),
             ],
             'contact_person' => ['nullable', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'max:30'],
+            'phone' => ['nullable', 'string', 'max:30'],
             'email' => ['nullable', 'email', 'max:255'],
             'address' => ['nullable', 'string'],
             'gstin' => ['nullable', 'string', 'max:20'],
@@ -43,7 +43,6 @@ class DealerRequest extends FormRequest
             'name.required' => 'Dealer name is required.',
             'code.required' => 'Dealer code is required.',
             'code.unique' => 'A dealer with this unique code already exists.',
-            'phone.required' => 'Contact phone number is required.',
         ];
     }
 }

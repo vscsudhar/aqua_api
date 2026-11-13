@@ -34,10 +34,16 @@ class DealerSupplyItem extends Model
     protected static function booted(): void
     {
         static::saving(function (DealerSupplyItem $item) {
-            if ($item->dealer_supply_id && ! $item->supply_id) {
-                $item->supply_id = $item->dealer_supply_id;
-            } elseif ($item->supply_id && ! $item->dealer_supply_id) {
-                $item->dealer_supply_id = $item->supply_id;
+            try {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('dealer_supply_items', 'supply_id')) {
+                    if ($item->dealer_supply_id && ! $item->supply_id) {
+                        $item->supply_id = $item->dealer_supply_id;
+                    } elseif ($item->supply_id && ! $item->dealer_supply_id) {
+                        $item->dealer_supply_id = $item->supply_id;
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Ignore schema check errors
             }
             if ($item->applied_price && ! $item->unit_price) {
                 $item->unit_price = $item->applied_price;

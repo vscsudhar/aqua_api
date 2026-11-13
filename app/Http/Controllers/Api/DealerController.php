@@ -179,4 +179,135 @@ class DealerController extends Controller
             'entries' => $entries,
         ], 'Dealer ledger retrieved successfully.');
     }
+
+    /**
+     * Complete Dealer Account Statement with summary metrics and running balances.
+     */
+    public function statement(int $id, Request $request): JsonResponse
+    {
+        $dealer = Dealer::find($id);
+
+        if (! $dealer) {
+            return $this->errorResponse('Dealer not found.', 404);
+        }
+
+        $startDate = $request->query('start_date');
+        $endDate = $request->query('end_date');
+
+        // Base opening balance of dealer
+        $baseOpening = (float) $dealer->opening_balance;
+
+        // Calculate opening balance at start of range
+        $effectiveOpeningBalance = $baseOpening;
+        if ($startDate) {
+            $priorDiff = DealerLedgerEntry::where('dealer_id', $id)
+                ->where('entry_date', '<', $startDate)
+                ->where('entry_type', '!=', 'opening_balance')
+                ->selectRaw('COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance_diff')
+                ->value('balance_diff') ?? 0;
+            $effectiveOpeningBalance += (float) $priorDiff;
+        }
+
+        $query = DealerLedgerEntry::where('dealer_id', $id);
+        if ($startDate) {
+            $query->where('entry_date', '>=', $startDate);
+        }
+        if ($endDate) {
+            $query->where('entry_date', '<=', $endDate);
+        }
+
+        $entries = $query->orderBy('entry_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $running = $effectiveOpeningBalance;
+        $totalDebit = 0.0;
+        $totalCredit = 0.0;
+        $totalSupplyAmount = 0.0;
+        $totalPaymentsReceived = 0.0;
+
+        $formattedEntries = [];
+        foreach ($entries as $entry) {
+            if ($entry->entry_type === 'opening_balance') {
+                continue;
+            }
+
+            $debit = (float) $entry->debit;
+            $credit = (float) $entry->credit;
+            $running = round($running + $debit - $credit, 2);
+
+            $totalDebit += $debit;
+            $totalCredit += $credit;
+
+            if ($entry->entry_type === 'supply' || $debit > 0) {
+                $totalSupplyAmount += $debit;
+            }
+            if ($entry->entry_type === 'payment' || $credit > 0) {
+                $totalPaymentsReceived += $credit;
+            }
+
+            $formattedEntries[] = [
+                'id' => $entry->id,
+                'entry_date' => $entry->entry_date ? $entry->entry_date->toDateString() : null,
+                'reference_no' => $entry->reference_no ?? 'TRX-'.$entry->id,
+                'entry_type' => $entry->entry_type,
+                'type_label' => match($entry->entry_type) {
+                    'supply' => 'Supply Invoice',
+                    'payment' => 'Payment Received',
+                    'adjustment' => 'Adjustment',
+                    default => ucfirst(str_replace('_', ' ', $entry->entry_type ?? 'transaction')),
+                },
+                'reference_id' => $entry->reference_id,
+                'debit' => $debit,
+                'credit' => $credit,
+                'balance' => $running,
+                'narration' => $entry->narration,
+            ];
+        }
+
+        $closingBalance = $running;
+        $debitBalance = $closingBalance > 0 ? $closingBalance : 0.0;
+        $creditBalance = $closingBalance < 0 ? abs($closingBalance) : 0.0;
+
+        $companySetting = \App\Models\CompanySetting::first();
+
+        return $this->successResponse([
+            'dealer' => [
+                'id' => $dealer->id,
+                'name' => $dealer->name,
+                'code' => $dealer->code,
+                'contact_person' => $dealer->contact_person,
+                'phone' => $dealer->phone,
+                'email' => $dealer->email,
+                'address' => $dealer->address,
+                'gstin' => $dealer->gstin,
+                'pan' => $dealer->pan,
+            ],
+            'company' => $companySetting ? [
+                'name' => $companySetting->company_name ?? 'SS AquaFlow',
+                'tagline' => $companySetting->tagline,
+                'phone' => $companySetting->phone,
+                'email' => $companySetting->email,
+                'address' => $companySetting->address,
+                'gstin' => $companySetting->gstin,
+                'logo_path' => $companySetting->logo_path,
+            ] : null,
+            'period' => [
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+            ],
+            'summary' => [
+                'opening_balance' => round($effectiveOpeningBalance, 2),
+                'total_debit' => round($totalDebit, 2),
+                'total_credit' => round($totalCredit, 2),
+                'total_supply_amount' => round($totalSupplyAmount, 2),
+                'total_payments_received' => round($totalPaymentsReceived, 2),
+                'closing_balance' => round($closingBalance, 2),
+                'debit_balance' => round($debitBalance, 2),
+                'credit_balance' => round($creditBalance, 2),
+                'current_outstanding' => $dealer->calculateOutstandingBalance(),
+            ],
+            'transactions' => $formattedEntries,
+        ], 'Dealer statement generated successfully.');
+    }
 }

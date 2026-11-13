@@ -34,6 +34,7 @@ class DealerPayment extends Model
         'collected_by',
         'created_by',
         'updated_by',
+        'include_in_ledger_amount',
     ];
 
     protected function casts(): array
@@ -41,6 +42,7 @@ class DealerPayment extends Model
         return [
             'payment_date' => 'date',
             'amount' => 'decimal:2',
+            'include_in_ledger_amount' => 'boolean',
         ];
     }
 

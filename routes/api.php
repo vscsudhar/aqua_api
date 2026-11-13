@@ -156,6 +156,7 @@ Route::prefix('v1')->group(function () {
         // Dealer Module & Dealer-Specific Pricing
         Route::patch('dealers/{id}/toggle-status', [DealerController::class, 'toggleStatus']);
         Route::get('dealers/{id}/ledger', [DealerController::class, 'ledger']);
+        Route::get('dealers/{id}/statement', [DealerController::class, 'statement']);
         Route::get('dealers/{id}/prices', [DealerPriceController::class, 'index']);
         Route::post('dealers/{id}/prices', [DealerPriceController::class, 'store']);
         Route::delete('dealers/{id}/prices/{priceId}', [DealerPriceController::class, 'destroy']);
@@ -173,16 +174,21 @@ Route::prefix('v1')->group(function () {
             Route::post('/', [DailyCollectionController::class, 'suppliesStore']);
             Route::get('/{id}', [DailyCollectionController::class, 'suppliesShow']);
             Route::put('/{id}', [DailyCollectionController::class, 'suppliesUpdate']);
+            Route::delete('/{id}', [DailyCollectionController::class, 'suppliesDestroy']);
         });
 
         Route::prefix('payments')->group(function () {
             Route::get('/', [DailyCollectionController::class, 'paymentsIndex']);
             Route::post('/', [DailyCollectionController::class, 'paymentsStore']);
+            Route::get('/{id}', [DailyCollectionController::class, 'paymentsShow']);
+            Route::put('/{id}', [DailyCollectionController::class, 'paymentsUpdate']);
+            Route::delete('/{id}', [DailyCollectionController::class, 'paymentsDestroy']);
         });
 
         // Reports: Monthly Dealer Ledger Module
         Route::prefix('reports/dealer-ledger')->group(function () {
             Route::get('/', [DealerLedgerReportController::class, 'index']);
+            Route::get('/cell-transactions', [DealerLedgerReportController::class, 'cellTransactions']);
             Route::get('/others', [DealerLedgerReportController::class, 'getOthers']);
             Route::post('/others', [DealerLedgerReportController::class, 'storeOthers']);
             Route::get('/export-pdf', [DealerLedgerReportController::class, 'exportPdf']);

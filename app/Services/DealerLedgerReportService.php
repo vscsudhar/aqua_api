@@ -201,7 +201,11 @@ class DealerLedgerReportService
                 if ($isCane) {
                     $itemAmount = (float) ($item->line_total ?? $item->total_amount ?? ($qty * $item->unit_price));
                     $dailySupplies[$dateStr][$dId]['cane_qty'] += $qty;
-                    $dailySupplies[$dateStr][$dId]['filling_amount'] += $itemAmount;
+                    // Strict separation: Refill products are count-only in the Dealer Ledger; do not add to filling amount
+                    $isPureRefill = ($prodType === 'refill') || stripos($prodName, 'refill') !== false || stripos($prodName, 'refil') !== false;
+                    if (! $isPureRefill) {
+                        $dailySupplies[$dateStr][$dId]['filling_amount'] += $itemAmount;
+                    }
 
                     if (! isset($productBreakdownTotals[$pId])) {
                         $productBreakdownTotals[$pId] = [
@@ -214,7 +218,9 @@ class DealerLedgerReportService
                         ];
                     }
                     $productBreakdownTotals[$pId]['total_quantity'] += $qty;
-                    $productBreakdownTotals[$pId]['total_amount'] += $itemAmount;
+                    if (! $isPureRefill) {
+                        $productBreakdownTotals[$pId]['total_amount'] += $itemAmount;
+                    }
                 }
             }
         }
@@ -222,6 +228,10 @@ class DealerLedgerReportService
         // Group payments by date and dealer
         $dailyPayments = [];
         foreach ($payments as $payment) {
+            // Check if explicitly excluded from ledger amount section
+            if (isset($payment->include_in_ledger_amount) && ! $payment->include_in_ledger_amount) {
+                continue;
+            }
             $dateStr = Carbon::parse($payment->payment_date)->toDateString();
             $dId = $payment->dealer_id;
 
@@ -965,5 +975,139 @@ class DealerLedgerReportService
                 'Content-Disposition' => "attachment; filename=\"{$fileName}\"",
             ]
         );
+    }
+
+    /**
+     * Retrieve all original source transactions contributing to a specific dealer cell on a given date.
+     */
+    public function getCellTransactions(int $dealerId, string $date): array
+    {
+        $dateStr = Carbon::parse($date, 'Asia/Kolkata')->toDateString();
+        $dealer = Dealer::find($dealerId);
+
+        $supplies = DealerSupply::with(['items.product', 'payments'])
+            ->where('dealer_id', $dealerId)
+            ->whereDate('supply_date', $dateStr)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $payments = DealerPayment::with(['dealer', 'supply'])
+            ->where('dealer_id', $dealerId)
+            ->whereDate('payment_date', $dateStr)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $ledgerEntries = \App\Models\DealerLedgerEntry::where('dealer_id', $dealerId)
+            ->whereDate('entry_date', $dateStr)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $transactions = [];
+
+        // Add supplies
+        foreach ($supplies as $supply) {
+            $items = [];
+            $totalCaneCount = 0;
+            foreach ($supply->items as $it) {
+                $p = $it->product;
+                $pType = $p?->product_type ?? 'normal';
+                $isRefill = $pType === 'refill' || stripos($p?->name ?? '', 'refill') !== false;
+                if ($isRefill) {
+                    $totalCaneCount += (int) $it->quantity;
+                }
+                $items[] = [
+                    'id' => $it->id,
+                    'product_id' => $it->product_id,
+                    'product_name' => $p?->name ?? 'Product #'.$it->product_id,
+                    'product_type' => $pType,
+                    'is_refill' => $isRefill,
+                    'quantity' => (float) $it->quantity,
+                    'unit' => $it->unit ?? 'Nos',
+                    'unit_price' => (float) $it->unit_price,
+                    'line_total' => (float) $it->line_total,
+                ];
+            }
+
+            $transactions[] = [
+                'id' => 'supply-'.$supply->id,
+                'source_table' => 'dealer_supplies',
+                'source_id' => $supply->id,
+                'transaction_no' => $supply->supply_no,
+                'transaction_type' => 'Dealer Supply',
+                'date' => $supply->supply_date->toDateString(),
+                'dealer_id' => $dealerId,
+                'dealer_name' => $dealer?->name ?? 'Dealer #'.$dealerId,
+                'dealer_code' => $dealer?->code ?? '',
+                'amount' => (float) $supply->total_amount,
+                'count' => $totalCaneCount,
+                'payment_status' => $supply->payment_status,
+                'status' => $supply->status,
+                'notes' => $supply->notes,
+                'items' => $items,
+                'can_edit' => true,
+                'can_delete' => true,
+                'created_at' => $supply->created_at?->toIso8601String(),
+            ];
+        }
+
+        // Add payments
+        foreach ($payments as $payment) {
+            $transactions[] = [
+                'id' => 'payment-'.$payment->id,
+                'source_table' => 'dealer_payments',
+                'source_id' => $payment->id,
+                'transaction_no' => $payment->payment_no,
+                'transaction_type' => 'Payment Received',
+                'date' => $payment->payment_date ? $payment->payment_date->toDateString() : $dateStr,
+                'dealer_id' => $dealerId,
+                'dealer_name' => $dealer?->name ?? 'Dealer #'.$dealerId,
+                'dealer_code' => $dealer?->code ?? '',
+                'amount' => (float) $payment->amount,
+                'payment_method' => $payment->payment_method ?? 'cash',
+                'payment_mode' => $payment->payment_mode ?? $payment->payment_method ?? 'cash',
+                'reference_no' => $payment->reference_no,
+                'status' => $payment->status,
+                'remarks' => $payment->remarks,
+                'notes' => $payment->notes,
+                'linked_supply_id' => $payment->dealer_supply_id,
+                'include_in_ledger_amount' => $payment->include_in_ledger_amount ?? true,
+                'can_edit' => true,
+                'can_delete' => true,
+                'created_at' => $payment->created_at?->toIso8601String(),
+            ];
+        }
+
+        // If no supplies or payments, include ledger entries
+        if (empty($transactions)) {
+            foreach ($ledgerEntries as $le) {
+                $transactions[] = [
+                    'id' => 'ledger-'.$le->id,
+                    'source_table' => 'dealer_ledger_entries',
+                    'source_id' => $le->id,
+                    'transaction_no' => $le->reference_no ?? 'LEDGER-'.$le->id,
+                    'transaction_type' => ucfirst(str_replace('_', ' ', $le->entry_type ?? 'ledger')),
+                    'date' => $le->entry_date ? $le->entry_date->toDateString() : $dateStr,
+                    'dealer_id' => $dealerId,
+                    'dealer_name' => $dealer?->name ?? '',
+                    'amount' => (float) ($le->credit > 0 ? $le->credit : $le->debit),
+                    'reference_no' => $le->reference_no,
+                    'notes' => $le->narration,
+                    'can_edit' => false,
+                    'can_delete' => false,
+                    'created_at' => $le->created_at?->toIso8601String(),
+                ];
+            }
+        }
+
+        return [
+            'dealer' => $dealer ? [
+                'id' => $dealer->id,
+                'name' => $dealer->name,
+                'code' => $dealer->code,
+                'phone' => $dealer->phone,
+            ] : null,
+            'date' => $dateStr,
+            'transactions' => $transactions,
+        ];
     }
 }
