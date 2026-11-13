@@ -228,5 +228,16 @@ Route::prefix('v1')->group(function () {
                 'timestamp' => now()->toIso8601String(),
             ]);
         });
+        // use Illuminate\Support\Facades\Route;
+
+Route::get('/backup-check', function () {
+    return response()->json([
+        'php_version' => PHP_VERSION,
+        'pdo_mysql' => extension_loaded('pdo_mysql'),
+        'exec_enabled' => function_exists('exec'),
+        'proc_open_enabled' => function_exists('proc_open'),
+        'shell_exec_enabled' => function_exists('shell_exec'),
+    ]);
+});
     });
 });
