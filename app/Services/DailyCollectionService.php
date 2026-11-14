@@ -15,6 +15,38 @@ use Illuminate\Validation\ValidationException;
 
 class DailyCollectionService
 {
+    public function filterAttributesForTable(string $table, array $attributes): array
+    {
+        static $cachedCols = [];
+        if (! isset($cachedCols[$table])) {
+            try {
+                $cachedCols[$table] = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            } catch (\Throwable $e) {
+                $cachedCols[$table] = [];
+            }
+        }
+        $validCols = $cachedCols[$table];
+        if (empty($validCols)) {
+            return $attributes;
+        }
+
+        return array_filter($attributes, fn ($k) => in_array($k, $validCols, true), ARRAY_FILTER_USE_KEY);
+    }
+
+    public function hasTableColumn(string $table, string $column): bool
+    {
+        static $cachedCols = [];
+        if (! isset($cachedCols[$table])) {
+            try {
+                $cachedCols[$table] = \Illuminate\Support\Facades\Schema::getColumnListing($table);
+            } catch (\Throwable $e) {
+                $cachedCols[$table] = [];
+            }
+        }
+
+        return in_array($column, $cachedCols[$table] ?? [], true);
+    }
+
     /**
      * Creates a new supply transaction with applied price snapshots and optional immediate collection.
      */
@@ -35,14 +67,35 @@ class DailyCollectionService
 
         return DB::transaction(function () use ($dealer, $supplyDate, $data, $user) {
             $companyId = $dealer->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
-            // Generate unique Supply No
+            // Generate unique Supply No — serialized with FOR UPDATE lock to prevent race conditions
             $dateSlug = Carbon::parse($supplyDate)->format('Ymd');
-            $supplyQuery = DealerSupply::withoutGlobalScopes()->withTrashed();
-            $count = (clone $supplyQuery)->whereDate('supply_date', $supplyDate)->count() + 1;
+            $supplyPrefix = sprintf('DS-%s-', $dateSlug);
+
+            // Lock the latest row for this company+date to serialize concurrent requests
+            $lastSupply = DealerSupply::withoutGlobalScopes()
+                ->withTrashed()
+                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                ->where('supply_no', 'like', $supplyPrefix . '%')
+                ->lockForUpdate()
+                ->orderByDesc('supply_no')
+                ->first(['supply_no']);
+
+            $lastSupplySeq = 0;
+            if ($lastSupply) {
+                $parts = explode('-', $lastSupply->supply_no);
+                $lastSupplySeq = (int) end($parts);
+            }
+
             do {
-                $supplyNo = sprintf('DS-%s-%04d', $dateSlug, $count);
-                $count++;
-            } while (DealerSupply::withoutGlobalScopes()->withTrashed()->where('supply_no', $supplyNo)->exists());
+                $lastSupplySeq++;
+                $supplyNo = $supplyPrefix . sprintf('%04d', $lastSupplySeq);
+            } while (
+                DealerSupply::withoutGlobalScopes()
+                    ->withTrashed()
+                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                    ->where('supply_no', $supplyNo)
+                    ->exists()
+            );
 
             $discountAmount = isset($data['discount_amount']) ? (float) $data['discount_amount'] : 0.00;
             $adjustmentAmount = isset($data['adjustment_amount']) ? (float) $data['adjustment_amount'] : 0.00;
@@ -128,13 +181,32 @@ class DailyCollectionService
                     ? Carbon::parse($data['payment_date'], 'Asia/Kolkata')->toDateString()
                     : $supplyDate;
 
+                // Generate unique Payment No — serialized with FOR UPDATE lock to prevent race conditions
                 $payDateSlug = Carbon::parse($payDate)->format('Ymd');
-                $payQuery = DealerPayment::withoutGlobalScopes()->withTrashed();
-                $payCount = (clone $payQuery)->whereDate('payment_date', $payDate)->count() + 1;
+                $payPrefix = sprintf('PAY-%s-', $payDateSlug);
+
+                $lastPayment = DealerPayment::withoutGlobalScopes()
+                    ->withTrashed()
+                    ->where('payment_no', 'like', $payPrefix . '%')
+                    ->lockForUpdate()
+                    ->orderByDesc('payment_no')
+                    ->first(['payment_no']);
+
+                $lastPaySeq = 0;
+                if ($lastPayment) {
+                    $parts = explode('-', $lastPayment->payment_no);
+                    $lastPaySeq = (int) end($parts);
+                }
+
                 do {
-                    $paymentNo = sprintf('PAY-%s-%04d', $payDateSlug, $payCount);
-                    $payCount++;
-                } while (DealerPayment::withoutGlobalScopes()->withTrashed()->where('payment_no', $paymentNo)->exists());
+                    $lastPaySeq++;
+                    $paymentNo = $payPrefix . sprintf('%04d', $lastPaySeq);
+                } while (
+                    DealerPayment::withoutGlobalScopes()
+                        ->withTrashed()
+                        ->where('payment_no', $paymentNo)
+                        ->exists()
+                );
 
                 $includeInLedger = true;
                 if (array_key_exists('include_in_ledger_amount', $data)) {
@@ -347,13 +419,32 @@ class DailyCollectionService
 
         return DB::transaction(function () use ($dealer, $amount, $paymentDate, $data, $user) {
             $companyId = $dealer->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
+            // Generate unique Payment No — serialized with FOR UPDATE lock to prevent race conditions
             $dateSlug = Carbon::parse($paymentDate)->format('Ymd');
-            $payQuery = DealerPayment::withoutGlobalScopes()->withTrashed();
-            $count = (clone $payQuery)->whereDate('payment_date', $paymentDate)->count() + 1;
+            $payPrefix = sprintf('PAY-%s-', $dateSlug);
+
+            $lastPayment = DealerPayment::withoutGlobalScopes()
+                ->withTrashed()
+                ->where('payment_no', 'like', $payPrefix . '%')
+                ->lockForUpdate()
+                ->orderByDesc('payment_no')
+                ->first(['payment_no']);
+
+            $lastPaySeq = 0;
+            if ($lastPayment) {
+                $parts = explode('-', $lastPayment->payment_no);
+                $lastPaySeq = (int) end($parts);
+            }
+
             do {
-                $paymentNo = sprintf('PAY-%s-%04d', $dateSlug, $count);
-                $count++;
-            } while (DealerPayment::withoutGlobalScopes()->withTrashed()->where('payment_no', $paymentNo)->exists());
+                $lastPaySeq++;
+                $paymentNo = $payPrefix . sprintf('%04d', $lastPaySeq);
+            } while (
+                DealerPayment::withoutGlobalScopes()
+                    ->withTrashed()
+                    ->where('payment_no', $paymentNo)
+                    ->exists()
+            );
 
             $includeInLedger = true;
             if (array_key_exists('include_in_ledger_amount', $data)) {
