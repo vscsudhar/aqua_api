@@ -14,11 +14,14 @@ class CompanyController extends Controller
     use ApiResponseTrait;
 
     /**
-     * List all registered client companies.
+     * List all registered client companies belonging to the authenticated tenant.
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Company::query();
+        $ownerCompanyId = $request->user()?->company_id;
+
+        $query = Company::query()
+            ->when($ownerCompanyId, fn ($q) => $q->where('owner_company_id', $ownerCompanyId));
 
         if ($request->filled('search')) {
             $search = trim($request->query('search'));
@@ -60,7 +63,9 @@ class CompanyController extends Controller
             'status' => 'nullable|in:active,inactive',
         ]);
 
-        return DB::transaction(function () use ($validated) {
+        $ownerCompanyId = $request->user()?->company_id;
+
+        return DB::transaction(function () use ($validated, $ownerCompanyId) {
             $code = $validated['company_code'] ?? null;
             if (empty($code)) {
                 // Generate next CMP-xxxx code
@@ -82,6 +87,7 @@ class CompanyController extends Controller
             }
 
             $company = Company::create([
+                'owner_company_id' => $ownerCompanyId,
                 'company_code' => $code,
                 'name' => trim($validated['name']),
                 'contact_person' => $validated['contact_person'] ?? null,
@@ -103,9 +109,19 @@ class CompanyController extends Controller
     /**
      * Display the specified company.
      */
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $ownerCompanyId = $request->user()?->company_id;
+
+        $query = Company::query();
+        if ($ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()->isSuperAdmin())) {
+            $query->where(function ($q) use ($ownerCompanyId) {
+                $q->where('owner_company_id', $ownerCompanyId)
+                  ->orWhere('id', $ownerCompanyId);
+            });
+        }
+
+        $company = $query->findOrFail($id);
 
         return response()->json([
             'status' => 'success',
@@ -118,7 +134,17 @@ class CompanyController extends Controller
      */
     public function update(Request $request, int $id): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $ownerCompanyId = $request->user()?->company_id;
+
+        $query = Company::query();
+        if ($ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()->isSuperAdmin())) {
+            $query->where(function ($q) use ($ownerCompanyId) {
+                $q->where('owner_company_id', $ownerCompanyId)
+                  ->orWhere('id', $ownerCompanyId);
+            });
+        }
+
+        $company = $query->findOrFail($id);
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',

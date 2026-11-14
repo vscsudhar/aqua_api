@@ -808,12 +808,19 @@ class BillingService
 
     /**
      * Render professional HTML invoice view.
+     * Always reloads the invoice fresh from the database before building the cache key
+     * so that any payment updates made during the same request cycle are reflected.
      */
     public function renderInvoiceHtml(Invoice $invoice)
     {
-        $invoice->load(['company', 'dealer', 'supply', 'items.product', 'payments']);
+        // Refresh from DB to pick up the latest paid_amount / balance_due / updated_at
+        // that may have been written by recordPayment() or updateInvoice() earlier in the
+        // same or a previous request.
+        $invoice = $invoice->fresh(['company', 'dealer', 'supply', 'items.product', 'payments'])
+            ?? $invoice->load(['company', 'dealer', 'supply', 'items.product', 'payments']);
+
         $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
-        $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
+        $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first()
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: Company::find($companyId);
 
@@ -827,20 +834,37 @@ class BillingService
             if ($logoPath && Storage::disk('public')->exists($logoPath)) {
                 $absPath = Storage::disk('public')->path($logoPath);
                 $mime = @mime_content_type($absPath) ?: 'image/png';
+
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
             }
+
             return null;
         });
 
-        $paySum = (float) $invoice->payments()->sum('amount');
-        $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}_{$paySum}_{$invoice->paid_amount}_{$invoice->balance_due}_{$invoice->status}";
-        return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoBase64) {
+        // Recalculate the live payment sum from the DB to guard against stale model state.
+        $livePaySum = (float) $invoice->payments()->sum('amount');
+
+        // Cache key includes the live payment sum and updated_at timestamp so the HTML is
+        // regenerated whenever the invoice or its payments change.
+        $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}_{$livePaySum}";
+
+        return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoBase64, $livePaySum) {
+            // Use the live sum for display so the rendered HTML is always accurate.
+            $grandTotal = (float) $invoice->grand_total;
+            $invoice->paid_amount  = round($livePaySum, 2);
+            $invoice->balance_due  = round(max(0.0, $grandTotal - $livePaySum), 2);
+            $invoice->payment_status = match (true) {
+                $livePaySum >= $grandTotal && $grandTotal > 0 => 'paid',
+                $livePaySum > 0                               => 'partially_paid',
+                default                                       => 'unpaid',
+            };
+
             return view('invoices.pdf', [
-                'invoice' => $invoice,
-                'settings' => $settings,
-                'logoBase64' => $logoBase64,
-                'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
-                'isHtmlView' => true,
+                'invoice'       => $invoice,
+                'settings'      => $settings,
+                'logoBase64'    => $logoBase64,
+                'amountInWords' => $this->numberToIndianWords($grandTotal),
+                'isHtmlView'    => true,
             ])->render();
         });
     }
