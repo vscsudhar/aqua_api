@@ -101,7 +101,11 @@ class BillingService
             }
 
             if ($customerCompany) {
-                $customerName = $data['customer_name'] ?? $customerCompany->name;
+                $rawCustName = $data['customer_name'] ?? $customerCompany->name;
+                $customerName = trim(preg_replace('/\s*\((?:COMP|DEALER|CODE)[^\)]*\)/i', '', $rawCustName));
+                if (empty($customerName)) {
+                    $customerName = $customerCompany->name;
+                }
                 $customerPhone = $data['customer_phone'] ?? $customerCompany->phone;
                 $customerEmail = $data['customer_email'] ?? $customerCompany->email;
                 $customerAddress = $data['customer_address'] ?? $customerCompany->address;
@@ -317,7 +321,11 @@ class BillingService
                 }
             }
             if (isset($data['customer_name'])) {
-                $invoice->customer_name = $data['customer_name'];
+                $rawName = trim($data['customer_name']);
+                if ($invoice->customer_type === 'company' || !empty($invoice->customer_company_id)) {
+                    $rawName = trim(preg_replace('/\s*\((?:COMP|DEALER|CODE)[^\)]*\)/i', '', $rawName));
+                }
+                $invoice->customer_name = $rawName;
             }
             if (isset($data['customer_phone'])) {
                 $invoice->customer_phone = $data['customer_phone'];
@@ -347,6 +355,49 @@ class BillingService
             // Re-save line items
             $invoice->items()->delete();
             $this->saveInvoiceItems($invoice, $data['items'] ?? [], $isInterstate);
+
+            // Synchronize Payment for Draft Updates
+            if (array_key_exists('paid_amount', $data) || array_key_exists('payment_amount', $data)) {
+                $targetPaid = (float) ($data['paid_amount'] ?? $data['payment_amount'] ?? 0);
+                $currentPaid = (float) $invoice->payments()->sum('amount');
+
+                if ($targetPaid > $currentPaid) {
+                    $diff = round($targetPaid - $currentPaid, 2);
+                    $this->recordPayment($invoice, [
+                        'amount' => $diff,
+                        'payment_date' => $invoiceDate,
+                        'payment_method' => $data['payment_method'] ?? 'cash',
+                        'reference_no' => $data['payment_reference'] ?? null,
+                        'notes' => 'Received during invoice update',
+                    ], $user);
+                } elseif ($targetPaid < $currentPaid) {
+                    if ($targetPaid <= 0) {
+                        $invoice->payments()->delete();
+                    } else {
+                        // Reconcile to single payment matching targetPaid
+                        $invoice->payments()->delete();
+                        $this->recordPayment($invoice, [
+                            'amount' => $targetPaid,
+                            'payment_date' => $invoiceDate,
+                            'payment_method' => $data['payment_method'] ?? 'cash',
+                            'reference_no' => $data['payment_reference'] ?? null,
+                            'notes' => 'Updated payment amount',
+                        ], $user);
+                    }
+                }
+            }
+
+            // Always re-calculate final payment totals and balance against current grand_total
+            $finalPaid = (float) $invoice->payments()->sum('amount');
+            $invoice->paid_amount = round($finalPaid, 2);
+            $invoice->balance_due = round(max(0.0, (float) $invoice->grand_total - $finalPaid), 2);
+            if ($invoice->paid_amount >= (float) $invoice->grand_total && (float) $invoice->grand_total > 0) {
+                $invoice->payment_status = 'paid';
+            } elseif ($invoice->paid_amount > 0) {
+                $invoice->payment_status = 'partially_paid';
+            } else {
+                $invoice->payment_status = 'unpaid';
+            }
 
             // If updating status to finalized
             $isFinal = filter_var($data['is_final'] ?? false, FILTER_VALIDATE_BOOLEAN);
@@ -656,7 +707,18 @@ class BillingService
         $invoice->raw_grand_total = $rawGrand;
         $invoice->round_off = $roundOff;
         $invoice->grand_total = $roundedGrand;
-        $invoice->balance_due = $roundedGrand;
+
+        // Query valid existing payments to maintain exact accounting
+        $totalPaid = (float) $invoice->payments()->sum('amount');
+        $invoice->paid_amount = round($totalPaid, 2);
+        $invoice->balance_due = round(max(0.0, (float) $roundedGrand - $totalPaid), 2);
+        if ($invoice->paid_amount >= (float) $roundedGrand && (float) $roundedGrand > 0) {
+            $invoice->payment_status = 'paid';
+        } elseif ($invoice->paid_amount > 0) {
+            $invoice->payment_status = 'partially_paid';
+        } else {
+            $invoice->payment_status = 'unpaid';
+        }
         $invoice->save();
     }
 
@@ -770,7 +832,8 @@ class BillingService
             return null;
         });
 
-        $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}";
+        $paySum = (float) $invoice->payments()->sum('amount');
+        $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}_{$paySum}_{$invoice->paid_amount}_{$invoice->balance_due}_{$invoice->status}";
         return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoBase64) {
             return view('invoices.pdf', [
                 'invoice' => $invoice,

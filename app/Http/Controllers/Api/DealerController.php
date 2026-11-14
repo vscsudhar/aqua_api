@@ -269,6 +269,82 @@ class DealerController extends Controller
         $debitBalance = $closingBalance > 0 ? $closingBalance : 0.0;
         $creditBalance = $closingBalance < 0 ? abs($closingBalance) : 0.0;
 
+        // Breakdown: Refill, Bottle, Others, P1, and P2
+        $suppliesQuery = \App\Models\DealerSupply::with('items.product')
+            ->where('dealer_id', $id)
+            ->where('status', 'delivered');
+        if ($startDate) {
+            $suppliesQuery->where('supply_date', '>=', $startDate);
+        }
+        if ($endDate) {
+            $suppliesQuery->where('supply_date', '<=', $endDate);
+        }
+        $supplies = $suppliesQuery->get();
+
+        $reportService = app(\App\Services\DealerLedgerReportService::class);
+
+        $refillCount = 0;
+        $refillAmount = 0.0;
+        $bottleCount = 0;
+        $bottleAmount = 0.0;
+        $p1RefillAmount = 0.0;
+        $p2RefillAmount = 0.0;
+
+        foreach ($supplies as $sup) {
+            $sDate = \Carbon\Carbon::parse($sup->supply_date);
+            $day = (int) $sDate->day;
+            foreach ($sup->items as $item) {
+                $p = $item->product;
+                $pName = $p?->name ?? $item->notes ?? '';
+                $pSku = $p?->sku ?? '';
+                $pUnit = $item->unit ?? $p?->unit ?? '';
+                $pType = $p?->product_type;
+                $pId = $p?->id ?? $item->product_id;
+                $qty = (float) $item->quantity;
+                $lineTotal = (float) ($item->line_total ?? $item->total_amount ?? ($qty * ($item->unit_price ?? 0)));
+
+                $isRefill = $reportService->isRefillCaneProduct($pId, $pName, $pSku, $pUnit, null, $pType);
+                if ($isRefill) {
+                    $refillCount += (int) $qty;
+                    $refillAmount += $lineTotal;
+                    if ($day <= 15) {
+                        $p1RefillAmount += $lineTotal;
+                    } else {
+                        $p2RefillAmount += $lineTotal;
+                    }
+                } else {
+                    $bottleCount += (int) $qty;
+                    $bottleAmount += $lineTotal;
+                }
+            }
+        }
+
+        // Payments breakdown
+        $paymentsQuery = \App\Models\DealerPayment::where('dealer_id', $id);
+        if ($startDate) {
+            $paymentsQuery->where('payment_date', '>=', $startDate);
+        }
+        if ($endDate) {
+            $paymentsQuery->where('payment_date', '<=', $endDate);
+        }
+        $dealerPayments = $paymentsQuery->get();
+
+        $othersPayments = 0.0;
+        $p1Payments = 0.0;
+        $p2Payments = 0.0;
+        foreach ($dealerPayments as $pay) {
+            $amt = (float) $pay->amount;
+            $payDay = (int) \Carbon\Carbon::parse($pay->payment_date)->day;
+            if (isset($pay->include_in_ledger_amount) && ! $pay->include_in_ledger_amount) {
+                $othersPayments += $amt;
+            }
+            if ($payDay <= 15) {
+                $p1Payments += $amt;
+            } else {
+                $p2Payments += $amt;
+            }
+        }
+
         $companySetting = \App\Models\CompanySetting::first();
 
         return $this->successResponse([
@@ -306,6 +382,15 @@ class DealerController extends Controller
                 'debit_balance' => round($debitBalance, 2),
                 'credit_balance' => round($creditBalance, 2),
                 'current_outstanding' => $dealer->calculateOutstandingBalance(),
+                'refill_count' => $refillCount,
+                'refill_amount' => round($refillAmount, 2),
+                'bottle_count' => $bottleCount,
+                'bottle_amount' => round($bottleAmount, 2),
+                'others_payments' => round($othersPayments, 2),
+                'p1_refill_amount' => round($p1RefillAmount, 2),
+                'p2_refill_amount' => round($p2RefillAmount, 2),
+                'p1_payments' => round($p1Payments, 2),
+                'p2_payments' => round($p2Payments, 2),
             ],
             'transactions' => $formattedEntries,
         ], 'Dealer statement generated successfully.');

@@ -320,7 +320,7 @@
                 <!-- Left Box: Customer Details -->
                 <td style="width: 54%; vertical-align: top; padding: 8pt 14pt; border-right: 1pt solid #1e293b; font-size: 8.8pt; color: #1e293b; line-height: 1.45;">
                     <div style="font-weight: bold; color: #0f172a; font-size: 10.5pt; margin-bottom: 3pt;">
-                        TO : {{ strtoupper($invoice->customer_name) }}
+                        TO : {{ strtoupper(trim(preg_replace('/\s*\((?:COMP|DEALER|CODE)[^\)]*\)/i', '', $invoice->customer_name))) }}
                     </div>
                     @if($invoice->customer_address)
                         <div style="margin-bottom: 2pt; color: #334155; font-size: 8.8pt;">{{ $invoice->customer_address }}</div>
@@ -346,6 +346,31 @@
                         <tr>
                             <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice Date</td>
                             <td style="padding: 2pt 0;">: {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') }}</td>
+                        </tr>
+                        @php
+                            $paidAmt = (float) ($invoice->paid_amount ?? 0);
+                            $grandTot = (float) ($invoice->grand_total ?? 0);
+                            $balDue = max(0.0, (float) ($invoice->balance_due ?? ($grandTot - $paidAmt)));
+                            if ($paidAmt <= 0) {
+                                $payStatusText = 'UNPAID';
+                                $payStatusColor = '#dc2626';
+                                $payStatusBg = '#fef2f2';
+                                $payStatusBorder = '#fecaca';
+                            } elseif ($paidAmt < $grandTot) {
+                                $payStatusText = 'PARTIALLY PAID';
+                                $payStatusColor = '#d97706';
+                                $payStatusBg = '#fffbeb';
+                                $payStatusBorder = '#fde68a';
+                            } else {
+                                $payStatusText = 'FULLY PAID';
+                                $payStatusColor = '#16a34a';
+                                $payStatusBg = '#f0fdf4';
+                                $payStatusBorder = '#bbf7d0';
+                            }
+                        @endphp
+                        <tr>
+                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Payment Status</td>
+                            <td style="padding: 2pt 0; font-weight: bold; color: {{ $payStatusColor }};">: {{ $payStatusText }}</td>
                         </tr>
                         <tr>
                             <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Payment Mode</td>
@@ -558,14 +583,31 @@
                         <strong>In Words :</strong> {{ $amountInWords }}
                     </div>
 
-                    @if($invoice->balance_due > 0 && $invoice->paid_amount > 0)
-                    <table style="width: 100%; border-collapse: collapse; margin-top: 5pt; font-size: 8.5pt;">
-                        <tr>
-                            <td style="color: #16a34a; padding: 1pt 0;">Paid: ₹{{ formatInvoiceAmount($invoice->paid_amount) }}</td>
-                            <td style="text-align: right; color: #b91c1c; font-weight: bold; padding: 1pt 0;">Balance: ₹{{ formatInvoiceAmount($invoice->balance_due) }}</td>
-                        </tr>
-                    </table>
-                    @endif
+                    <!-- PAYMENT SUMMARY CARD (Clear Status, Amount Paid, Balance Due) -->
+                    <div style="margin-top: 7pt; border: 0.5pt solid {{ $payStatusBorder }}; background-color: {{ $payStatusBg }}; border-radius: 4pt; padding: 5pt 8pt;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt;">
+                            <tr>
+                                <td style="padding: 2pt 0; color: #475569; font-weight: 600;">Payment Status:</td>
+                                <td style="text-align: right; padding: 2pt 0;">
+                                    <span style="font-weight: bold; font-size: 8.8pt; color: {{ $payStatusColor }}; letter-spacing: 0.5px;">
+                                        {{ $payStatusText }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 2pt 0; color: #475569;">Amount Paid:</td>
+                                <td style="text-align: right; font-weight: bold; color: #16a34a; padding: 2pt 0;">
+                                    ₹{{ formatInvoiceAmount($paidAmt) }}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 2pt 0; color: #475569;">Balance Due:</td>
+                                <td style="text-align: right; font-weight: bold; color: {{ $balDue > 0 ? '#dc2626' : '#16a34a' }}; padding: 2pt 0;">
+                                    ₹{{ formatInvoiceAmount($balDue) }}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
                 </td>
             </tr>
         </table>
