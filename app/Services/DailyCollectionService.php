@@ -21,7 +21,7 @@ class DailyCollectionService
     public function createSupply(array $data, ?User $user = null): DealerSupply
     {
         // 1. Idempotency Check
-        if (! empty($data['idempotency_key'])) {
+        if (! empty($data['idempotency_key']) && $this->hasTableColumn('dealer_supplies', 'idempotency_key')) {
             $existing = DealerSupply::where('idempotency_key', $data['idempotency_key'])->first();
             if ($existing) {
                 return $existing->load(['dealer', 'items.product', 'payments']);
@@ -38,19 +38,16 @@ class DailyCollectionService
             // Generate unique Supply No
             $dateSlug = Carbon::parse($supplyDate)->format('Ymd');
             $supplyQuery = DealerSupply::withoutGlobalScopes()->withTrashed();
-            if ($companyId) {
-                $supplyQuery->where('company_id', $companyId);
-            }
             $count = (clone $supplyQuery)->whereDate('supply_date', $supplyDate)->count() + 1;
             do {
                 $supplyNo = sprintf('DS-%s-%04d', $dateSlug, $count);
                 $count++;
-            } while ((clone $supplyQuery)->where('supply_no', $supplyNo)->exists());
+            } while (DealerSupply::withoutGlobalScopes()->withTrashed()->where('supply_no', $supplyNo)->exists());
 
             $discountAmount = isset($data['discount_amount']) ? (float) $data['discount_amount'] : 0.00;
             $adjustmentAmount = isset($data['adjustment_amount']) ? (float) $data['adjustment_amount'] : 0.00;
 
-            $supply = DealerSupply::create([
+            $supply = DealerSupply::create($this->filterAttributesForTable('dealer_supplies', [
                 'company_id' => $companyId,
                 'supply_no' => $supplyNo,
                 'idempotency_key' => $data['idempotency_key'] ?? null,
@@ -67,7 +64,7 @@ class DailyCollectionService
                 'status' => 'delivered',
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $user?->id,
-            ]);
+            ]));
 
             $subtotal = 0.00;
             $taxTotal = 0.00;
@@ -98,8 +95,9 @@ class DailyCollectionService
                 $subtotal += $lineTotal;
                 $taxTotal += $lineTax;
 
-                DealerSupplyItem::create([
+                DealerSupplyItem::create($this->filterAttributesForTable('dealer_supply_items', [
                     'dealer_supply_id' => $supply->id,
+                    'supply_id' => $supply->id,
                     'product_id' => $product->id,
                     'quantity' => $quantity,
                     'unit' => $itemData['unit'] ?? $product->unit,
@@ -111,14 +109,16 @@ class DailyCollectionService
                     'line_total' => $lineTotal,
                     'total_amount' => $lineTotal,
                     'notes' => $itemData['notes'] ?? null,
-                ]);
+                ]));
             }
 
             $totalAmount = round($subtotal + $adjustmentAmount - $discountAmount, 2);
             $supply->subtotal = $subtotal;
             $supply->tax_amount = 0.00;
             $supply->total_amount = $totalAmount;
-            $supply->outstanding_amount = $totalAmount;
+            if ($this->hasTableColumn('dealer_supplies', 'outstanding_amount')) {
+                $supply->outstanding_amount = $totalAmount;
+            }
             $supply->save();
 
             // Process immediate collection if provided
@@ -130,24 +130,28 @@ class DailyCollectionService
 
                 $payDateSlug = Carbon::parse($payDate)->format('Ymd');
                 $payQuery = DealerPayment::withoutGlobalScopes()->withTrashed();
-                if ($companyId) {
-                    $payQuery->where('company_id', $companyId);
-                }
                 $payCount = (clone $payQuery)->whereDate('payment_date', $payDate)->count() + 1;
                 do {
                     $paymentNo = sprintf('PAY-%s-%04d', $payDateSlug, $payCount);
                     $payCount++;
-                } while ((clone $payQuery)->where('payment_no', $paymentNo)->exists());
+                } while (DealerPayment::withoutGlobalScopes()->withTrashed()->where('payment_no', $paymentNo)->exists());
 
                 $includeInLedger = true;
                 if (array_key_exists('include_in_ledger_amount', $data)) {
                     $includeInLedger = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
                 }
 
-                $payment = DealerPayment::create([
+                $payIdempotencyKey = isset($data['idempotency_key']) ? $data['idempotency_key'].'-PAY' : null;
+                if ($payIdempotencyKey && $this->hasTableColumn('dealer_payments', 'idempotency_key')) {
+                    if (DealerPayment::withoutGlobalScopes()->withTrashed()->where('idempotency_key', $payIdempotencyKey)->exists()) {
+                        $payIdempotencyKey .= '-'.substr(uniqid(), -4);
+                    }
+                }
+
+                $payment = DealerPayment::create($this->filterAttributesForTable('dealer_payments', [
                     'company_id' => $companyId,
                     'payment_no' => $paymentNo,
-                    'idempotency_key' => isset($data['idempotency_key']) ? $data['idempotency_key'].'-PAY' : null,
+                    'idempotency_key' => $payIdempotencyKey,
                     'dealer_id' => $dealer->id,
                     'dealer_supply_id' => $supply->id,
                     'payment_date' => $payDate,
@@ -161,19 +165,25 @@ class DailyCollectionService
                     'include_in_ledger_amount' => $includeInLedger,
                     'collected_by' => $user?->id,
                     'created_by' => $user?->id,
-                ]);
+                ]));
 
                 // Synchronize payment credit ledger entry
                 $payment->syncLedgerEntry($user?->id);
 
                 // Update supply paid amount (capped at supply's total amount)
                 $supplyPaid = min($totalAmount, $payAmount);
-                $supply->paid_amount = $supplyPaid;
-                $supply->outstanding_amount = round(max(0.0, $totalAmount - $payAmount), 2);
-                if ($payAmount >= $totalAmount) {
-                    $supply->payment_status = 'paid';
-                } elseif ($payAmount > 0) {
-                    $supply->payment_status = 'partially_paid';
+                if ($this->hasTableColumn('dealer_supplies', 'paid_amount')) {
+                    $supply->paid_amount = $supplyPaid;
+                }
+                if ($this->hasTableColumn('dealer_supplies', 'outstanding_amount')) {
+                    $supply->outstanding_amount = round(max(0.0, $totalAmount - $payAmount), 2);
+                }
+                if ($this->hasTableColumn('dealer_supplies', 'payment_status')) {
+                    if ($payAmount >= $totalAmount) {
+                        $supply->payment_status = 'paid';
+                    } elseif ($payAmount > 0) {
+                        $supply->payment_status = 'partially_paid';
+                    }
                 }
                 $supply->save();
             }
@@ -242,8 +252,9 @@ class DailyCollectionService
                     $subtotal += $lineTotal;
                     $taxTotal += $lineTax;
 
-                    DealerSupplyItem::create([
+                    DealerSupplyItem::create($this->filterAttributesForTable('dealer_supply_items', [
                         'dealer_supply_id' => $supply->id,
+                        'supply_id' => $supply->id,
                         'product_id' => $product->id,
                         'quantity' => $quantity,
                         'unit' => $itemData['unit'] ?? $product->unit,
@@ -255,7 +266,7 @@ class DailyCollectionService
                         'line_total' => $lineTotal,
                         'total_amount' => $lineTotal,
                         'notes' => $itemData['notes'] ?? null,
-                    ]);
+                    ]));
                 }
 
                 $supply->subtotal = $subtotal;
@@ -338,21 +349,18 @@ class DailyCollectionService
             $companyId = $dealer->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
             $dateSlug = Carbon::parse($paymentDate)->format('Ymd');
             $payQuery = DealerPayment::withoutGlobalScopes()->withTrashed();
-            if ($companyId) {
-                $payQuery->where('company_id', $companyId);
-            }
             $count = (clone $payQuery)->whereDate('payment_date', $paymentDate)->count() + 1;
             do {
                 $paymentNo = sprintf('PAY-%s-%04d', $dateSlug, $count);
                 $count++;
-            } while ((clone $payQuery)->where('payment_no', $paymentNo)->exists());
+            } while (DealerPayment::withoutGlobalScopes()->withTrashed()->where('payment_no', $paymentNo)->exists());
 
             $includeInLedger = true;
             if (array_key_exists('include_in_ledger_amount', $data)) {
                 $includeInLedger = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
             }
 
-            $payment = DealerPayment::create([
+            $payment = DealerPayment::create($this->filterAttributesForTable('dealer_payments', [
                 'company_id' => $companyId,
                 'payment_no' => $paymentNo,
                 'idempotency_key' => $data['idempotency_key'] ?? null,
@@ -369,7 +377,7 @@ class DailyCollectionService
                 'include_in_ledger_amount' => $includeInLedger,
                 'collected_by' => $user?->id,
                 'created_by' => $user?->id,
-            ]);
+            ]));
 
             // If linked to a supply, update that supply's payment financials
             if (! empty($data['dealer_supply_id'])) {

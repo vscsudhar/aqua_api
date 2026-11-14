@@ -56,9 +56,6 @@ class InventoryService
         if (method_exists(InventoryMovement::class, 'withTrashed')) {
             $movQuery = InventoryMovement::withoutGlobalScopes()->withTrashed();
         }
-        if ($companyId) {
-            $movQuery->where('company_id', $companyId);
-        }
         $count = (clone $movQuery)->whereDate('movement_date', $date)->count() + 1;
         do {
             $movementNo = sprintf('MOV-%s-%04d', $dateSlug, $count);
@@ -126,9 +123,6 @@ class InventoryService
             // Generate Purchase No
             $dateSlug = Carbon::parse($purchaseDate)->format('Ymd');
             $purQuery = Purchase::withoutGlobalScopes()->withTrashed();
-            if ($companyId) {
-                $purQuery->where('company_id', $companyId);
-            }
             $count = (clone $purQuery)->whereDate('purchase_date', $purchaseDate)->count() + 1;
             do {
                 $purchaseNo = sprintf('PUR-%s-%04d', $dateSlug, $count);
@@ -485,9 +479,6 @@ class InventoryService
             $companyId = $product->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
             $dateSlug = Carbon::parse($date)->format('Ymd');
             $adjQuery = StockAdjustment::withoutGlobalScopes()->withTrashed();
-            if ($companyId) {
-                $adjQuery->where('company_id', $companyId);
-            }
             $count = (clone $adjQuery)->whereDate('adjustment_date', $date)->count() + 1;
             do {
                 $adjustmentNo = sprintf('ADJ-%s-%04d', $dateSlug, $count);

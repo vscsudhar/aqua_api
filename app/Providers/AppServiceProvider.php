@@ -25,13 +25,8 @@ class AppServiceProvider extends ServiceProvider
     {
         // Automatically ensure database schema migrations are applied on deployment (cached for 24h to avoid overhead on every request)
         try {
-            Cache::remember('app_schema_migrate_check_v2', 86400, function () {
-                if (
-                    (Schema::hasTable('products') && ! Schema::hasColumn('products', 'product_type')) ||
-                    (Schema::hasTable('invoices') && ! Schema::hasColumn('invoices', 'invoice_type'))
-                ) {
-                    Artisan::call('migrate', ['--force' => true]);
-                }
+            Cache::remember('app_schema_migrate_check_v5', 86400, function () {
+                Artisan::call('migrate', ['--force' => true]);
                 return true;
             });
         } catch (\Throwable $e) {

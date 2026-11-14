@@ -110,14 +110,28 @@ class DailyCollectionController extends Controller
      */
     public function suppliesStore(StoreDealerSupplyRequest $request): JsonResponse
     {
-        $supply = $this->collectionService->createSupply($request->validated(), $request->user());
-        $isNew = $supply->wasRecentlyCreated;
+        try {
+            $supply = $this->collectionService->createSupply($request->validated(), $request->user());
+            $isNew = $supply->wasRecentlyCreated;
 
-        return response()->json([
-            'status' => 'success',
-            'message' => $isNew ? 'Dealer supply recorded successfully.' : 'Existing supply retrieved (idempotent).',
-            'data' => new DealerSupplyResource($supply),
-        ], $isNew ? 201 : 200);
+            return response()->json([
+                'status' => 'success',
+                'message' => $isNew ? 'Dealer supply recorded successfully.' : 'Existing supply retrieved (idempotent).',
+                'data' => new DealerSupplyResource($supply),
+            ], $isNew ? 201 : 200);
+        } catch (\Illuminate\Validation\ValidationException $ve) {
+            throw $ve;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Supplies store failed: '.$e->getMessage(), [
+                'exception' => $e,
+                'payload' => $request->all(),
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to record dealer supply: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
