@@ -67,14 +67,15 @@ class DailyCollectionService
 
         return DB::transaction(function () use ($dealer, $supplyDate, $data, $user) {
             $companyId = $dealer->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
-            // Generate unique Supply No — serialized with FOR UPDATE lock to prevent race conditions
+            // Generate unique Supply No — serialized with lock and global sequence check
+            // to support both table-wide unique constraint and multi-tenant scoping safely.
             $dateSlug = Carbon::parse($supplyDate)->format('Ymd');
             $supplyPrefix = sprintf('DS-%s-', $dateSlug);
 
-            // Lock the latest row for this company+date to serialize concurrent requests
+            // Fetch the highest sequence across ALL companies for this dateSlug prefix
+            // so it can NEVER violate the table-wide supplies_supply_no_unique constraint.
             $lastSupply = DealerSupply::withoutGlobalScopes()
                 ->withTrashed()
-                ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
                 ->where('supply_no', 'like', $supplyPrefix . '%')
                 ->lockForUpdate()
                 ->orderByDesc('supply_no')
@@ -92,7 +93,6 @@ class DailyCollectionService
             } while (
                 DealerSupply::withoutGlobalScopes()
                     ->withTrashed()
-                    ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
                     ->where('supply_no', $supplyNo)
                     ->exists()
             );
