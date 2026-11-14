@@ -15,13 +15,35 @@ class BottleLedgerController extends Controller
         protected BottleLedgerService $bottleLedgerService
     ) {}
 
+    protected function resolveCompanyId(Request $request): int
+    {
+        $user = $request->user() ?: Auth::user();
+        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            return (int) ($request->header('X-Company-Id') ?: $request->input('company_id') ?: $user->company_id ?: 1);
+        }
+
+        $homeId = (int) ($user?->company_id ?: 1);
+        $requested = $request->header('X-Company-Id') ?: $request->input('company_id');
+        if ($requested && (int) $requested !== $homeId) {
+            $isOwned = \App\Models\Company::withoutGlobalScopes()
+                ->where('id', $requested)
+                ->where('owner_company_id', $homeId)
+                ->exists();
+
+            if ($isOwned) {
+                return (int) $requested;
+            }
+        }
+
+        return $homeId;
+    }
+
     /**
      * Get monthly bottle ledger data (Left: Dealer Without Refill, Right: Supplier Purchases, Stock Register).
      */
     public function index(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        $companyId = $user?->company_id ?? 1;
+        $companyId = $this->resolveCompanyId($request);
 
         $now = Carbon::now('Asia/Kolkata');
         $year = (int) $request->input('year', $now->year);
@@ -37,12 +59,11 @@ class BottleLedgerController extends Controller
     }
 
     /**
-     * Drill-down details for a specific day, product key, and source ('dealer' or 'supplier').
+     * Drill-down details for a specific day, product key, and source ('dealer', 'supplier', or 'damage').
      */
     public function drilldown(Request $request): JsonResponse
     {
-        $user = Auth::user();
-        $companyId = $user?->company_id ?? 1;
+        $companyId = $this->resolveCompanyId($request);
 
         $request->validate([
             'date' => ['required', 'date'],
@@ -51,7 +72,7 @@ class BottleLedgerController extends Controller
         ]);
 
         $date = Carbon::parse($request->input('date'))->toDateString();
-        $productKey = strtoupper(trim($request->input('product_key')));
+        $productKey = trim($request->input('product_key'));
         $source = strtolower($request->input('source'));
 
         $details = $this->bottleLedgerService->getTransactionDetails($companyId, $date, $productKey, $source);
@@ -67,8 +88,7 @@ class BottleLedgerController extends Controller
      */
     public function exportPdf(Request $request)
     {
-        $user = Auth::user();
-        $companyId = $user?->company_id ?? 1;
+        $companyId = $this->resolveCompanyId($request);
 
         $now = Carbon::now('Asia/Kolkata');
         $year = (int) $request->input('year', $now->year);
@@ -80,4 +100,3 @@ class BottleLedgerController extends Controller
         return $pdf->download($filename);
     }
 }
-

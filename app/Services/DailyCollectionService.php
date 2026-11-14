@@ -125,6 +125,12 @@ class DailyCollectionService
             // Process line items with price snapshots
             foreach ($data['items'] as $itemData) {
                 $product = Product::findOrFail($itemData['product_id']);
+                if ($product->company_id && (int) $product->company_id !== (int) $companyId) {
+                    throw ValidationException::withMessages([
+                        'items' => ["Product '{$product->name}' does not belong to the active company."],
+                    ]);
+                }
+
                 $quantity = (float) $itemData['quantity'];
                 if ($quantity <= 0) {
                     throw ValidationException::withMessages([
@@ -149,6 +155,7 @@ class DailyCollectionService
                 $taxTotal += $lineTax;
 
                 DealerSupplyItem::create($this->filterAttributesForTable('dealer_supply_items', [
+                    'company_id' => $companyId,
                     'dealer_supply_id' => $supply->id,
                     'supply_id' => $supply->id,
                     'product_id' => $product->id,
@@ -302,8 +309,15 @@ class DailyCollectionService
                 $subtotal = 0.00;
                 $taxTotal = 0.00;
 
+                $companyId = $supply->company_id ?? $dealer->company_id ?? $user?->company_id;
                 foreach ($data['items'] as $itemData) {
                     $product = Product::findOrFail($itemData['product_id']);
+                    if ($product->company_id && (int) $product->company_id !== (int) $companyId) {
+                        throw ValidationException::withMessages([
+                            'items' => ["Product '{$product->name}' does not belong to the active company."],
+                        ]);
+                    }
+
                     $quantity = (float) $itemData['quantity'];
                     if ($quantity <= 0) {
                         throw ValidationException::withMessages([
@@ -325,6 +339,7 @@ class DailyCollectionService
                     $taxTotal += $lineTax;
 
                     DealerSupplyItem::create($this->filterAttributesForTable('dealer_supply_items', [
+                        'company_id' => $companyId,
                         'dealer_supply_id' => $supply->id,
                         'supply_id' => $supply->id,
                         'product_id' => $product->id,

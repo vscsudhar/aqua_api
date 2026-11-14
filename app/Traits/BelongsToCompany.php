@@ -18,11 +18,44 @@ trait BelongsToCompany
 
         static::creating(function ($model) {
             $user = request()->user() ?: Auth::user() ?: Auth::guard('sanctum')->user();
-            if ($user && method_exists($user, 'isSuperAdmin') && !$user->isSuperAdmin()) {
-                // Always enforce authenticated user's company_id. Never trust client payload.
-                $model->company_id = $user->company_id;
-            } elseif (empty($model->company_id) && $user && !empty($user->company_id)) {
-                $model->company_id = $user->company_id;
+            if (! $user) {
+                return;
+            }
+
+            if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+                $targetId = request()->header('X-Company-Id') ?: request()->input('company_id') ?: $model->company_id ?: $user->company_id;
+                if ($targetId) {
+                    $model->company_id = $targetId;
+                }
+                return;
+            }
+
+            // Tenant user
+            $companyId = $user->company_id;
+            $requestedCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id');
+            if ($requestedCompanyId && (int)$requestedCompanyId !== (int)$companyId) {
+                $isOwned = Company::withoutGlobalScopes()
+                    ->where('id', $requestedCompanyId)
+                    ->where('owner_company_id', $companyId)
+                    ->exists();
+
+                if ($isOwned) {
+                    $model->company_id = $requestedCompanyId;
+                    return;
+                }
+            }
+
+            // Always enforce authorized company_id
+            $model->company_id = $companyId;
+        });
+
+        static::updating(function ($model) {
+            // Prevent unauthorized cross-company mutation of company_id
+            if ($model->isDirty('company_id') && !empty($model->getOriginal('company_id'))) {
+                $user = request()->user() ?: Auth::user() ?: Auth::guard('sanctum')->user();
+                if (!$user || !method_exists($user, 'isSuperAdmin') || !$user->isSuperAdmin()) {
+                    $model->company_id = $model->getOriginal('company_id');
+                }
             }
         });
     }

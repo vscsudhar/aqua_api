@@ -21,13 +21,40 @@ class CompanyScope implements Scope
             return;
         }
 
-        // If authenticated and is not a super_admin
-        if (method_exists($user, 'isSuperAdmin') && ! $user->isSuperAdmin()) {
-            if ($user->company_id) {
-                $builder->where($model->getTable() . '.company_id', $user->company_id);
-            } else {
-                $builder->whereRaw('1 = 0');
+        // Super Admin access: can filter by X-Company-Id or company_id if provided
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            $targetCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id') ?: $user->company_id;
+            if ($targetCompanyId) {
+                $builder->where($model->getTable() . '.company_id', $targetCompanyId);
             }
+            return;
         }
+
+        // Non-super-admin tenant users
+        $companyId = $user->company_id;
+        if (! $companyId) {
+            $builder->whereRaw('1 = 0');
+            return;
+        }
+
+        // Validate client-supplied company_id: only allowed if owned/onboarded client company
+        $requestedCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id');
+        if ($requestedCompanyId && (int)$requestedCompanyId !== (int)$companyId) {
+            $isOwned = \App\Models\Company::withoutGlobalScopes()
+                ->where('id', $requestedCompanyId)
+                ->where('owner_company_id', $companyId)
+                ->exists();
+
+            if ($isOwned) {
+                $builder->where($model->getTable() . '.company_id', $requestedCompanyId);
+                return;
+            }
+
+            // Unauthorized cross-company attempt: block query results completely
+            $builder->whereRaw('1 = 0');
+            return;
+        }
+
+        $builder->where($model->getTable() . '.company_id', $companyId);
     }
 }

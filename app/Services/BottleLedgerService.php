@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Company;
-use App\Models\CompanySetting;
 use App\Models\DamagedProduct;
 use App\Models\DealerSupply;
 use App\Models\Product;
@@ -16,96 +15,83 @@ use Illuminate\Support\Facades\Storage;
 class BottleLedgerService
 {
     /**
-     * Standard 8 product keys required for Bottle Ledger.
+     * Fetch all eligible bottle products for the specified company from Product Master.
+     * Strictly excludes Refill products.
      */
-    public const PRODUCT_KEYS = [
-        '1L',
-        '2L',
-        '5L',
-        '500ML',
-        '200ML',
-        '100ML',
-        'NBT',
-        'BOT',
-    ];
+    public function getCompanyBottleProducts(int $companyId)
+    {
+        return Product::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->whereNull('deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('product_type')
+                    ->orWhereRaw('LOWER(TRIM(product_type)) != ?', ['refill']);
+            })
+            ->whereRaw('LOWER(TRIM(name)) NOT LIKE ?', ['%refill%'])
+            ->whereRaw('LOWER(TRIM(name)) NOT LIKE ?', ['%refil%'])
+            ->whereRaw('LOWER(TRIM(COALESCE(sku, ""))) NOT LIKE ?', ['%refill%'])
+            ->orderBy('id', 'asc')
+            ->get();
+    }
 
     /**
-     * Resolve product name/SKU to one of the 8 standard bottle keys.
-     * Excludes refills and non-bottle products.
+     * Resolves an item's product to the corresponding Product Master key name for this company.
+     * Strictly excludes refills.
      */
-    public function resolveProductKey(?string $name, ?string $sku = '', ?string $productType = null): ?string
-    {
-        // Strictly exclude Refills by product_type
-        if ($productType === 'refill') {
+    public function resolveProductKeyForCompany(
+        ?int $productId,
+        ?string $name,
+        ?string $sku = '',
+        ?string $productType = null,
+        array $idToKey = [],
+        array $nameToKey = [],
+        array $skuToKey = []
+    ): ?string {
+        // 1. Strictly exclude Refills by product_type (case-insensitive, trimmed)
+        if ($productType && strtolower(trim($productType)) === 'refill') {
             return null;
         }
 
-        $str = strtoupper(trim(($name ?? '') . ' ' . ($sku ?? '')));
+        $n = strtoupper(trim($name ?? ''));
+        $s = strtoupper(trim($sku ?? ''));
 
-        if (empty($str)) {
-            return null;
-        }
-
-        // Strictly exclude Refills by name
-        if (strpos($str, 'REFILL') !== false || strpos($str, 'REFIL') !== false) {
+        // Strictly exclude Refills by name or SKU
+        if (strpos($n, 'REFILL') !== false || strpos($n, 'REFIL') !== false || strpos($s, 'REFILL') !== false) {
             return null;
         }
 
         // 20L jars/cans are refill containers unless explicitly named bottle
-        if (preg_match('/\b20\s*L\b|\b20-L\b|\b20L\b|\b20\s*LIT/i', $str) && (strpos($str, 'BOTTLE') === false)) {
+        if (preg_match('/\b20\s*L\b|\b20-L\b|\b20L\b|\b20\s*LIT/i', $n) && strpos($n, 'BOTTLE') === false) {
             return null;
         }
 
-        // Exclude caps, seals, raw materials unless they match NBT or BOT
-        if (strpos($str, 'CAPS') !== false || strpos($str, 'SEAL') !== false) {
-            return null;
+        // 2. Direct ID match
+        if ($productId && isset($idToKey[$productId])) {
+            return $idToKey[$productId];
         }
 
-        // Check 100ML
-        if (preg_match('/100\s*ML/i', $str)) {
-            return '100ML';
+        // 3. Direct Name match
+        if ($n && isset($nameToKey[$n])) {
+            return $nameToKey[$n];
         }
 
-        // Check 200ML
-        if (preg_match('/200\s*ML/i', $str)) {
-            return '200ML';
+        // 4. Direct SKU match
+        if ($s && isset($skuToKey[$s])) {
+            return $skuToKey[$s];
         }
 
-        // Check 500ML (or 300ML / 250ML packaged water bottle)
-        if (preg_match('/500\s*ML/i', $str) || preg_match('/300\s*ML/i', $str) || preg_match('/250\s*ML/i', $str)) {
-            return '500ML';
-        }
-
-        // Check 5L / 5 Litre
-        if (preg_match('/\b5\s*(?:L|LITER|LITRE)\b/i', $str)) {
-            return '5L';
-        }
-
-        // Check 2L / 2 Litre
-        if (preg_match('/\b2\s*(?:L|LITER|LITRE)\b/i', $str)) {
-            return '2L';
-        }
-
-        // Check 1L / 1 Litre
-        if (preg_match('/\b1\s*(?:L|LITER|LITRE)\b/i', $str)) {
-            return '1L';
-        }
-
-        // Check NBT (New Bottle / Non-refill Bottle Type)
-        if (preg_match('/\bNBT\b/i', $str)) {
-            return 'NBT';
-        }
-
-        // Check BOT (Bottom / Bottle)
-        if (preg_match('/\bBOT\b|\bBOTTOM\b/i', $str)) {
-            return 'BOT';
+        // 5. Fuzzy match against registered product keys
+        foreach ($nameToKey as $canonUpper => $canonName) {
+            if ($n === $canonUpper || ($n && strpos($n, $canonUpper) !== false) || ($s && $s === $canonUpper)) {
+                return $canonName;
+            }
         }
 
         return null;
     }
 
     /**
-     * Build the monthly matrix and stock register for the company.
+     * Build the dynamic monthly matrix and stock register for the company.
      */
     public function getMonthlyLedger(int $companyId, int $year, int $month): array
     {
@@ -115,41 +101,57 @@ class BottleLedgerService
         $monthName = $startDate->format('F Y');
 
         $company = Company::find($companyId);
-        $companyName = $company?->name ?? 'Marina Aqua';
+        $companyName = $company?->name ?? 'SS AquaFlow';
 
-        // 1. Calculate opening stock for each product key prior to $startDate
-        $priorSupplierQtys = $this->getCumulativeSupplierQuantities($companyId, $startDate->toDateString());
-        $priorDealerQtys = $this->getCumulativeDealerQuantities($companyId, $startDate->toDateString());
-        $priorDamagedQtys = $this->getCumulativeDamagedQuantities($companyId, $startDate->toDateString());
+        // 1. Fetch dynamic products belonging ONLY to this company (excluding refills)
+        $products = $this->getCompanyBottleProducts($companyId);
+        $productKeys = $products->pluck('name')->unique()->values()->toArray();
+
+        // Build lookup maps for fast and accurate resolution
+        $idToKey = [];
+        $nameToKey = [];
+        $skuToKey = [];
+        foreach ($products as $p) {
+            $idToKey[$p->id] = $p->name;
+            $nameToKey[strtoupper(trim($p->name))] = $p->name;
+            if (! empty($p->sku)) {
+                $skuToKey[strtoupper(trim($p->sku))] = $p->name;
+            }
+        }
+
+        // 2. Calculate opening stock for each product key prior to $startDate
+        $priorSupplierQtys = $this->getCumulativeSupplierQuantities($companyId, $startDate->toDateString(), $productKeys, $idToKey, $nameToKey, $skuToKey);
+        $priorDealerQtys = $this->getCumulativeDealerQuantities($companyId, $startDate->toDateString(), $productKeys, $idToKey, $nameToKey, $skuToKey);
+        $priorDamagedQtys = $this->getCumulativeDamagedQuantities($companyId, $startDate->toDateString(), $productKeys, $idToKey, $nameToKey, $skuToKey);
 
         $openingStock = [];
-        foreach (self::PRODUCT_KEYS as $key) {
+        foreach ($productKeys as $key) {
             $in = $priorSupplierQtys[$key] ?? 0.0;
             $out = ($priorDealerQtys[$key] ?? 0.0) + ($priorDamagedQtys[$key] ?? 0.0);
             $openingStock[$key] = round(max(0, $in - $out), 2);
         }
 
-        // 2. Fetch all dealer supplies for the month
+        // 3. Fetch dealer supplies for the month
         $supplies = DealerSupply::with(['items.product', 'dealer'])
             ->where('company_id', $companyId)
             ->where('status', 'delivered')
             ->whereBetween('supply_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
-        // 3. Fetch all supplier purchases for the month
+        // 4. Fetch supplier purchases for the month
         $purchases = Purchase::with(['items.product', 'supplier'])
             ->where('company_id', $companyId)
             ->where('status', '!=', 'cancelled')
             ->whereBetween('purchase_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
-        // 3b. Fetch all damaged products for the month
+        // 5. Fetch damaged products for the month
         $damagedEntries = DamagedProduct::with('product')
             ->where('company_id', $companyId)
             ->whereBetween('damage_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
-        // 4. Initialize daily maps
+        // 6. Initialize daily maps
         $dealerDaily = [];
         $supplierDaily = [];
         $damageDaily = [];
@@ -163,8 +165,8 @@ class BottleLedgerService
                 'day' => $dayCode,
                 'date' => $dateStr,
                 'day_name' => $dateCarbon->format('D'),
-                'products' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
-                'quantities' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
+                'products' => array_fill_keys($productKeys, 0.0),
+                'quantities' => array_fill_keys($productKeys, 0.0),
                 'total_amount' => 0.0,
             ];
 
@@ -172,8 +174,8 @@ class BottleLedgerService
                 'day' => $dayCode,
                 'date' => $dateStr,
                 'day_name' => $dateCarbon->format('D'),
-                'products' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
-                'quantities' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
+                'products' => array_fill_keys($productKeys, 0.0),
+                'quantities' => array_fill_keys($productKeys, 0.0),
                 'total_amount' => 0.0,
             ];
 
@@ -181,13 +183,13 @@ class BottleLedgerService
                 'day' => $dayCode,
                 'date' => $dateStr,
                 'day_name' => $dateCarbon->format('D'),
-                'products' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
-                'quantities' => array_fill_keys(self::PRODUCT_KEYS, 0.0),
+                'products' => array_fill_keys($productKeys, 0.0),
+                'quantities' => array_fill_keys($productKeys, 0.0),
                 'total_amount' => 0.0,
             ];
         }
 
-        // 5. Populate Dealer Purchases WITHOUT REFILL
+        // 7. Populate Dealer Purchases WITHOUT REFILL
         foreach ($supplies as $supply) {
             $dateStr = Carbon::parse($supply->supply_date)->toDateString();
             if (! isset($dealerDaily[$dateStr])) {
@@ -195,13 +197,14 @@ class BottleLedgerService
             }
 
             foreach ($supply->items as $item) {
+                $pId = $item->product_id;
                 $pName = $item->product?->name ?? '';
                 $pSku = $item->product?->sku ?? '';
                 $pType = $item->product?->product_type ?? null;
-                $key = $this->resolveProductKey($pName, $pSku, $pType);
 
-                if (! $key) {
-                    continue; // Skip refill items or unmapped products
+                $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+                if (! $key || ! in_array($key, $productKeys, true)) {
+                    continue;
                 }
 
                 $amt = (float) ($item->total_amount ?? $item->line_total ?? ($item->quantity * $item->unit_price));
@@ -213,7 +216,7 @@ class BottleLedgerService
             }
         }
 
-        // 6. Populate Supplier Purchases
+        // 8. Populate Supplier Purchases
         foreach ($purchases as $purchase) {
             $dateStr = Carbon::parse($purchase->purchase_date)->toDateString();
             if (! isset($supplierDaily[$dateStr])) {
@@ -221,11 +224,13 @@ class BottleLedgerService
             }
 
             foreach ($purchase->items as $item) {
+                $pId = $item->product_id;
                 $pName = $item->product_name ?? $item->product?->name ?? '';
                 $pSku = $item->product_sku ?? $item->product?->sku ?? '';
-                $key = $this->resolveProductKey($pName, $pSku);
+                $pType = $item->product?->product_type ?? null;
 
-                if (! $key) {
+                $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+                if (! $key || ! in_array($key, $productKeys, true)) {
                     continue;
                 }
 
@@ -238,18 +243,20 @@ class BottleLedgerService
             }
         }
 
-        // 6b. Populate Damaged Bottle Ledger Outward
+        // 9. Populate Damaged Bottle Ledger Outward
         foreach ($damagedEntries as $dmg) {
             $dateStr = Carbon::parse($dmg->damage_date)->toDateString();
             if (! isset($damageDaily[$dateStr])) {
                 continue;
             }
 
+            $pId = $dmg->product_id;
             $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
             $pSku = $dmg->product?->sku ?? '';
-            $key = $this->resolveProductKey($pName, $pSku);
+            $pType = $dmg->product?->product_type ?? null;
 
-            if (! $key) {
+            $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+            if (! $key || ! in_array($key, $productKeys, true)) {
                 continue;
             }
 
@@ -261,48 +268,48 @@ class BottleLedgerService
             $damageDaily[$dateStr]['total_amount'] += $amt;
         }
 
-        // 7. Calculate Monthly Totals for Dealer Table
-        $dealerMonthlyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
-        $dealerMonthlyQtyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+        // 10. Calculate Monthly Totals for Dealer Table
+        $dealerMonthlyTotals = array_fill_keys($productKeys, 0.0);
+        $dealerMonthlyQtyTotals = array_fill_keys($productKeys, 0.0);
         $dealerGrandTotal = 0.0;
 
         foreach ($dealerDaily as $dayData) {
-            foreach (self::PRODUCT_KEYS as $k) {
+            foreach ($productKeys as $k) {
                 $dealerMonthlyTotals[$k] += $dayData['products'][$k];
                 $dealerMonthlyQtyTotals[$k] += $dayData['quantities'][$k];
             }
             $dealerGrandTotal += $dayData['total_amount'];
         }
 
-        // 8. Calculate Monthly Totals for Supplier Table
-        $supplierMonthlyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
-        $supplierMonthlyQtyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+        // 11. Calculate Monthly Totals for Supplier Table
+        $supplierMonthlyTotals = array_fill_keys($productKeys, 0.0);
+        $supplierMonthlyQtyTotals = array_fill_keys($productKeys, 0.0);
         $supplierGrandTotal = 0.0;
 
         foreach ($supplierDaily as $dayData) {
-            foreach (self::PRODUCT_KEYS as $k) {
+            foreach ($productKeys as $k) {
                 $supplierMonthlyTotals[$k] += $dayData['products'][$k];
                 $supplierMonthlyQtyTotals[$k] += $dayData['quantities'][$k];
             }
             $supplierGrandTotal += $dayData['total_amount'];
         }
 
-        // 8b. Calculate Monthly Totals for Damage Table
-        $damageMonthlyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
-        $damageMonthlyQtyTotals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+        // 12. Calculate Monthly Totals for Damage Table
+        $damageMonthlyTotals = array_fill_keys($productKeys, 0.0);
+        $damageMonthlyQtyTotals = array_fill_keys($productKeys, 0.0);
         $damageGrandTotal = 0.0;
 
         foreach ($damageDaily as $dayData) {
-            foreach (self::PRODUCT_KEYS as $k) {
+            foreach ($productKeys as $k) {
                 $damageMonthlyTotals[$k] += $dayData['products'][$k];
                 $damageMonthlyQtyTotals[$k] += $dayData['quantities'][$k];
             }
             $damageGrandTotal += $dayData['total_amount'];
         }
 
-        // 9. Stock Register: Closing = Opening + Inward - Outward - Damaged
+        // 13. Stock Register: Closing = Opening + Inward - Outward - Damaged
         $stockRegister = [];
-        foreach (self::PRODUCT_KEYS as $k) {
+        foreach ($productKeys as $k) {
             $op = $openingStock[$k] ?? 0.0;
             $in = $supplierMonthlyQtyTotals[$k] ?? 0.0;
             $out = $dealerMonthlyQtyTotals[$k] ?? 0.0;
@@ -381,7 +388,7 @@ class BottleLedgerService
                 'month' => $month,
                 'month_name' => $monthName,
                 'days_in_month' => $daysInMonth,
-                'product_keys' => self::PRODUCT_KEYS,
+                'product_keys' => $productKeys,
             ],
             'opening_stock' => $openingStock,
             'dealer_table' => [
@@ -415,9 +422,15 @@ class BottleLedgerService
     /**
      * Cumulative supplier inward quantities before a date.
      */
-    protected function getCumulativeSupplierQuantities(int $companyId, string $beforeDate): array
-    {
-        $totals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+    protected function getCumulativeSupplierQuantities(
+        int $companyId,
+        string $beforeDate,
+        array $productKeys,
+        array $idToKey,
+        array $nameToKey,
+        array $skuToKey
+    ): array {
+        $totals = array_fill_keys($productKeys, 0.0);
 
         $purchases = Purchase::with(['items.product'])
             ->where('company_id', $companyId)
@@ -427,10 +440,13 @@ class BottleLedgerService
 
         foreach ($purchases as $pur) {
             foreach ($pur->items as $item) {
+                $pId = $item->product_id;
                 $pName = $item->product_name ?? $item->product?->name ?? '';
                 $pSku = $item->product_sku ?? $item->product?->sku ?? '';
-                $key = $this->resolveProductKey($pName, $pSku);
-                if ($key) {
+                $pType = $item->product?->product_type ?? null;
+
+                $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+                if ($key && isset($totals[$key])) {
                     $totals[$key] += (float) $item->quantity;
                 }
             }
@@ -442,9 +458,15 @@ class BottleLedgerService
     /**
      * Cumulative dealer outward quantities before a date.
      */
-    protected function getCumulativeDealerQuantities(int $companyId, string $beforeDate): array
-    {
-        $totals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+    protected function getCumulativeDealerQuantities(
+        int $companyId,
+        string $beforeDate,
+        array $productKeys,
+        array $idToKey,
+        array $nameToKey,
+        array $skuToKey
+    ): array {
+        $totals = array_fill_keys($productKeys, 0.0);
 
         $supplies = DealerSupply::with(['items.product'])
             ->where('company_id', $companyId)
@@ -454,11 +476,13 @@ class BottleLedgerService
 
         foreach ($supplies as $sup) {
             foreach ($sup->items as $item) {
+                $pId = $item->product_id;
                 $pName = $item->product?->name ?? '';
                 $pSku = $item->product?->sku ?? '';
                 $pType = $item->product?->product_type ?? null;
-                $key = $this->resolveProductKey($pName, $pSku, $pType);
-                if ($key) {
+
+                $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+                if ($key && isset($totals[$key])) {
                     $totals[$key] += (float) $item->quantity;
                 }
             }
@@ -470,9 +494,15 @@ class BottleLedgerService
     /**
      * Cumulative damaged bottle quantities before a date.
      */
-    protected function getCumulativeDamagedQuantities(int $companyId, string $beforeDate): array
-    {
-        $totals = array_fill_keys(self::PRODUCT_KEYS, 0.0);
+    protected function getCumulativeDamagedQuantities(
+        int $companyId,
+        string $beforeDate,
+        array $productKeys,
+        array $idToKey,
+        array $nameToKey,
+        array $skuToKey
+    ): array {
+        $totals = array_fill_keys($productKeys, 0.0);
 
         $damaged = DamagedProduct::with('product')
             ->where('company_id', $companyId)
@@ -480,10 +510,13 @@ class BottleLedgerService
             ->get();
 
         foreach ($damaged as $dmg) {
+            $pId = $dmg->product_id;
             $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
             $pSku = $dmg->product?->sku ?? '';
-            $key = $this->resolveProductKey($pName, $pSku);
-            if ($key) {
+            $pType = $dmg->product?->product_type ?? null;
+
+            $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+            if ($key && isset($totals[$key])) {
                 $totals[$key] += (float) $dmg->quantity;
             }
         }
@@ -498,6 +531,18 @@ class BottleLedgerService
     {
         $transactions = [];
 
+        $products = $this->getCompanyBottleProducts($companyId);
+        $idToKey = [];
+        $nameToKey = [];
+        $skuToKey = [];
+        foreach ($products as $p) {
+            $idToKey[$p->id] = $p->name;
+            $nameToKey[strtoupper(trim($p->name))] = $p->name;
+            if (! empty($p->sku)) {
+                $skuToKey[strtoupper(trim($p->sku))] = $p->name;
+            }
+        }
+
         if ($source === 'dealer') {
             $supplies = DealerSupply::with(['items.product', 'dealer'])
                 ->where('company_id', $companyId)
@@ -507,10 +552,11 @@ class BottleLedgerService
 
             foreach ($supplies as $supply) {
                 foreach ($supply->items as $item) {
+                    $pId = $item->product_id;
                     $pName = $item->product?->name ?? '';
                     $pSku = $item->product?->sku ?? '';
                     $pType = $item->product?->product_type ?? null;
-                    $resolved = $this->resolveProductKey($pName, $pSku, $pType);
+                    $resolved = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
 
                     if ($resolved === $productKey) {
                         $transactions[] = [
@@ -536,9 +582,11 @@ class BottleLedgerService
 
             foreach ($purchases as $purchase) {
                 foreach ($purchase->items as $item) {
+                    $pId = $item->product_id;
                     $pName = $item->product_name ?? $item->product?->name ?? '';
                     $pSku = $item->product_sku ?? $item->product?->sku ?? '';
-                    $resolved = $this->resolveProductKey($pName, $pSku);
+                    $pType = $item->product?->product_type ?? null;
+                    $resolved = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
 
                     if ($resolved === $productKey) {
                         $transactions[] = [
@@ -562,9 +610,11 @@ class BottleLedgerService
                 ->get();
 
             foreach ($damaged as $dmg) {
+                $pId = $dmg->product_id;
                 $pName = $dmg->product_name . ' ' . ($dmg->variant ?? '');
                 $pSku = $dmg->product?->sku ?? '';
-                $resolved = $this->resolveProductKey($pName, $pSku);
+                $pType = $dmg->product?->product_type ?? null;
+                $resolved = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
 
                 if ($resolved === $productKey) {
                     $transactions[] = [
@@ -587,7 +637,6 @@ class BottleLedgerService
 
     /**
      * Get a base64 encoded data URI for the company logo, resized to fit PDF headers.
-     * Prevents single-threaded loopback deadlocks and eliminates Dompdf memory exhaustion.
      */
     public function getPdfLogoBase64(?Company $company, int $maxW = 240, int $maxH = 80): ?string
     {
@@ -615,12 +664,10 @@ class BottleLedgerService
             $origH = $info[1];
             $mime = $info['mime'] ?? 'image/png';
 
-            // If already small enough (under 240x80 and < 100KB), return directly
             if ($origW <= $maxW && $origH <= $maxH && filesize($absPath) < 102400) {
                 return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
             }
 
-            // Downsample with GD to protect memory and render instantly in Dompdf
             $src = null;
             if ($mime === 'image/jpeg' || $mime === 'image/jpg') {
                 $src = @imagecreatefromjpeg($absPath);
@@ -657,7 +704,7 @@ class BottleLedgerService
                 return 'data:image/png;base64,' . base64_encode($thumbBytes);
             }
         } catch (\Throwable $e) {
-            \Log::warning('Failed generating PDF logo thumbnail: ' . $e->getMessage());
+            Log::warning('Failed generating PDF logo thumbnail: ' . $e->getMessage());
         }
 
         return null;
@@ -671,7 +718,6 @@ class BottleLedgerService
         $company = Company::find($companyId);
         $data = $this->getMonthlyLedger($companyId, $year, $month);
 
-        // Replace remote logo URL with local optimized base64 thumbnail
         $data['meta']['company_logo'] = $this->getPdfLogoBase64($company);
 
         $pdf = Pdf::loadView('reports.bottle_ledger_pdf', $data);
@@ -686,4 +732,3 @@ class BottleLedgerService
         return $pdf;
     }
 }
-

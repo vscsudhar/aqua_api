@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Product\ProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\Unit;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
@@ -16,9 +17,63 @@ class ProductController extends Controller
 {
     use ApiResponseTrait;
 
+    /**
+     * Resolves and validates the active company context for the authenticated user.
+     */
+    protected function resolveActiveCompanyId(Request $request): ?int
+    {
+        $user = $request->user();
+        if (! $user) {
+            return null;
+        }
+
+        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            $target = $request->header('X-Company-Id') ?: $request->input('company_id') ?: $user->company_id;
+            return $target ? (int) $target : null;
+        }
+
+        $homeCompanyId = (int) $user->company_id;
+        $requested = $request->header('X-Company-Id') ?: $request->input('company_id');
+        if ($requested && (int) $requested !== $homeCompanyId) {
+            $isOwned = \App\Models\Company::withoutGlobalScopes()
+                ->where('id', $requested)
+                ->where('owner_company_id', $homeCompanyId)
+                ->exists();
+
+            if ($isOwned) {
+                return (int) $requested;
+            }
+
+            return -1; // Unauthorized cross-company attempt
+        }
+
+        return $homeCompanyId;
+    }
+
     public function index(Request $request): JsonResponse
     {
+        $activeCompanyId = $this->resolveActiveCompanyId($request);
+        if ($activeCompanyId === -1) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Products retrieved successfully.',
+                'data' => [],
+                'meta' => [
+                    'current_page' => 1,
+                    'per_page' => 15,
+                    'total' => 0,
+                    'last_page' => 1,
+                ],
+                'errors' => null,
+            ]);
+        }
+
         $query = Product::with(['category', 'unitRel']);
+
+        // Explicit Company Isolation Filter
+        if ($activeCompanyId) {
+            $query->where('company_id', $activeCompanyId);
+        }
 
         // 1. Text Search
         if ($request->filled('search')) {
@@ -89,9 +144,16 @@ class ProductController extends Controller
 
     public function store(ProductRequest $request): JsonResponse
     {
+        $activeCompanyId = $this->resolveActiveCompanyId($request);
+        if (! $activeCompanyId || $activeCompanyId < 1) {
+            return $this->errorResponse('A valid active company context is required to create products.', 403);
+        }
+
         $data = $request->validated();
         $hasProductTypeCol = Schema::hasColumn('products', 'product_type');
 
+        // Ensure product is always created under the active company context
+        $data['company_id'] = $activeCompanyId;
         $data['product_type'] = $data['product_type'] ?? 'normal';
 
         if ($data['product_type'] === 'refill') {
@@ -101,13 +163,25 @@ class ProductController extends Controller
             $data['cost_price'] = $hasProductTypeCol ? null : 0.00;
         }
 
+        // Validate unit belongs to the company (or global)
         if (! empty($data['unit_id'])) {
-            $unit = Unit::find($data['unit_id']);
+            $unit = Unit::withoutGlobalScopes()->find($data['unit_id']);
             if ($unit) {
+                if ($unit->company_id && (int) $unit->company_id !== (int) $activeCompanyId) {
+                    return $this->errorResponse('The selected unit does not belong to your company.', 422);
+                }
                 $data['unit'] = $unit->name;
             }
         }
         $data['unit'] = $data['unit'] ?? 'Unit';
+
+        // Validate category belongs to the company (or global)
+        if (! empty($data['category_id'])) {
+            $cat = ProductCategory::withoutGlobalScopes()->find($data['category_id']);
+            if ($cat && $cat->company_id && (int) $cat->company_id !== (int) $activeCompanyId) {
+                return $this->errorResponse('The selected category does not belong to your company.', 422);
+            }
+        }
 
         if (! $hasProductTypeCol) {
             unset($data['product_type']);
@@ -130,6 +204,11 @@ class ProductController extends Controller
             return $this->errorResponse('Product not found.', 404);
         }
 
+        $activeCompanyId = $this->resolveActiveCompanyId(request());
+        if ($activeCompanyId && (int) $product->company_id !== (int) $activeCompanyId) {
+            return $this->errorResponse('Product not found.', 404);
+        }
+
         return $this->successResponse(new ProductResource($product), 'Product retrieved successfully.');
     }
 
@@ -141,7 +220,15 @@ class ProductController extends Controller
             return $this->errorResponse('Product not found.', 404);
         }
 
+        $activeCompanyId = $this->resolveActiveCompanyId($request);
+        if ($activeCompanyId && (int) $product->company_id !== (int) $activeCompanyId) {
+            return $this->errorResponse('Unauthorized access to modify this product.', 403);
+        }
+
         $data = $request->validated();
+        // Never allow altering the company_id on update
+        unset($data['company_id']);
+
         $hasProductTypeCol = Schema::hasColumn('products', 'product_type');
         $productType = $data['product_type'] ?? ($hasProductTypeCol ? $product->product_type : null) ?? 'normal';
 
@@ -161,9 +248,19 @@ class ProductController extends Controller
         }
 
         if (! empty($data['unit_id'])) {
-            $unit = Unit::find($data['unit_id']);
+            $unit = Unit::withoutGlobalScopes()->find($data['unit_id']);
             if ($unit) {
+                if ($unit->company_id && (int) $unit->company_id !== (int) $product->company_id) {
+                    return $this->errorResponse('The selected unit does not belong to your company.', 422);
+                }
                 $data['unit'] = $unit->name;
+            }
+        }
+
+        if (! empty($data['category_id'])) {
+            $cat = ProductCategory::withoutGlobalScopes()->find($data['category_id']);
+            if ($cat && $cat->company_id && (int) $cat->company_id !== (int) $product->company_id) {
+                return $this->errorResponse('The selected category does not belong to your company.', 422);
             }
         }
 
@@ -183,13 +280,18 @@ class ProductController extends Controller
             return $this->errorResponse('Product not found.', 404);
         }
 
+        $activeCompanyId = $this->resolveActiveCompanyId(request());
+        if ($activeCompanyId && (int) $product->company_id !== (int) $activeCompanyId) {
+            return $this->errorResponse('Unauthorized access to delete this product.', 403);
+        }
+
         // Referential integrity check: do not delete products referenced by supplies or purchases
         if ($product->isReferencedInTransactions()) {
             $product->update(['is_active' => false]);
 
             return $this->successResponse(
                 new ProductResource($product->load(['category', 'unitRel'])),
-                'Product is referenced in recorded transactions and cannot be deleted. It has been deactivated instead.'
+                'Product is referenced in recorded transactions. It has been deactivated to preserve ledger and historical records.'
             );
         }
 
@@ -204,6 +306,11 @@ class ProductController extends Controller
 
         if (! $product) {
             return $this->errorResponse('Product not found.', 404);
+        }
+
+        $activeCompanyId = $this->resolveActiveCompanyId(request());
+        if ($activeCompanyId && (int) $product->company_id !== (int) $activeCompanyId) {
+            return $this->errorResponse('Unauthorized access to modify this product.', 403);
         }
 
         $product->update(['is_active' => ! $product->is_active]);

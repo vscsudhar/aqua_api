@@ -229,7 +229,7 @@
                     <table class="table-panel">
                         <thead>
                             <tr>
-                                <th colspan="19" class="th-title">
+                                <th colspan="{{ count($meta['product_keys']) * 2 + 3 }}" class="th-title">
                                     LEFT SIDE &ndash; DEALER BOTTLE PURCHASE (WITHOUT REFILL)
                                 </th>
                             </tr>
@@ -293,7 +293,7 @@
                     <table class="table-panel">
                         <thead>
                             <tr>
-                                <th colspan="19" class="th-title-supplier">
+                                <th colspan="{{ count($meta['product_keys']) * 2 + 3 }}" class="th-title-supplier">
                                     RIGHT SIDE &ndash; SUPPLIER BOTTLE PURCHASE
                                 </th>
                             </tr>
@@ -358,7 +358,7 @@
         <table class="stock-table">
             <thead>
                 <tr>
-                    <th colspan="10" class="stock-title">
+                    <th colspan="{{ count($meta['product_keys']) + 2 }}" class="stock-title">
                         MONTHLY BOTTLE STOCK REGISTER &ndash; QUANTITY AUDIT SUMMARY
                     </th>
                 </tr>

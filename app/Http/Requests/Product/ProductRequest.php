@@ -17,13 +17,33 @@ class ProductRequest extends FormRequest
         $productId = $this->route('product') ?? $this->route('id');
         $isRefill = $this->input('product_type') === 'refill';
 
+        $user = $this->user();
+        $companyId = $user?->company_id;
+        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
+            $companyId = $this->header('X-Company-Id') ?: $this->input('company_id') ?: $user->company_id;
+        } elseif ($user && $user->company_id) {
+            $requested = $this->header('X-Company-Id') ?: $this->input('company_id');
+            if ($requested && (int) $requested !== (int) $user->company_id) {
+                $isOwned = \App\Models\Company::withoutGlobalScopes()
+                    ->where('id', $requested)
+                    ->where('owner_company_id', $user->company_id)
+                    ->exists();
+                if ($isOwned) {
+                    $companyId = (int) $requested;
+                }
+            }
+        }
+
         return [
             'name' => ['required', 'string', 'max:255'],
             'sku' => [
                 'required',
                 'string',
                 'max:100',
-                Rule::unique('products', 'sku')->ignore($productId),
+                Rule::unique('products', 'sku')
+                    ->where(fn ($query) => $companyId ? $query->where('company_id', $companyId) : $query)
+                    ->whereNull('deleted_at')
+                    ->ignore($productId),
             ],
             'product_type' => ['nullable', 'string', 'in:normal,refill'],
             'category_id' => ['required', 'exists:product_categories,id'],
