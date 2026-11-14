@@ -575,7 +575,8 @@ class DealerLedgerReportService
         $pdf->setOption([
             'isRemoteEnabled' => true,
             'isHtml5ParserEnabled' => true,
-            'defaultFont' => 'Helvetica',
+            'chroot' => [public_path(), base_path(), storage_path()],
+            'defaultFont' => 'Noto Sans',
             'margin_top' => 8,
             'margin_right' => 8,
             'margin_bottom' => 8,

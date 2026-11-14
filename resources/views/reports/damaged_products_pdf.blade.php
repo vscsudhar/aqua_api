@@ -4,8 +4,20 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>Damaged Products Report</title>
     <style>
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: normal;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: bold;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
+        }
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
             font-size: 9pt;
             color: #1e293b;
             line-height: 1.4;

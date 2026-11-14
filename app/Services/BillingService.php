@@ -800,7 +800,8 @@ class BillingService
               'defaultMediaType' => 'print',
               'isRemoteEnabled' => true,
               'isHtml5ParserEnabled' => true,
-              'defaultFont' => 'DejaVu Sans',
+              'chroot' => [public_path(), base_path(), storage_path()],
+              'defaultFont' => 'Noto Sans',
           ]);
 
         return $pdf;

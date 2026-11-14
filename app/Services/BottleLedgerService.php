@@ -676,8 +676,12 @@ class BottleLedgerService
 
         $pdf = Pdf::loadView('reports.bottle_ledger_pdf', $data);
         $pdf->setPaper('a4', 'landscape');
-        $pdf->setOption('isRemoteEnabled', false);
-        $pdf->setOption('isHtml5ParserEnabled', true);
+        $pdf->setOption([
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true,
+            'chroot' => [public_path(), base_path(), storage_path()],
+            'defaultFont' => 'Noto Sans',
+        ]);
 
         return $pdf;
     }

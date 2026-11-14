@@ -8,8 +8,20 @@
             size: A4 landscape;
             margin: 8mm 6mm 8mm 6mm;
         }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: normal;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: bold;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
+        }
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
             font-size: 7pt;
             color: #1a202c;
             margin: 0;

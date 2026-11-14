@@ -17,6 +17,20 @@
     @endif
     <title>{{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'Invoice' : 'Tax Invoice' }} - {{ $invoice->invoice_no }}</title>
     <style>
+        /* Embedded Unicode fonts supporting Indian Rupee symbol (₹) */
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: normal;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: bold;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
+        }
+
         /* Global Page Setup: Equal margins for A4 printing */
         @page {
             size: A4 portrait;
@@ -36,7 +50,7 @@
             background-color: #f1f5f9;
         }
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             font-size: 11px;
             color: #0f172a;
             line-height: 1.35;
@@ -174,7 +188,7 @@
            Strict PDF Print Engine Styling (Dompdf Output)
            ======================================================== */
         body {
-            font-family: 'DejaVu Sans', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', 'DejaVu Sans', Helvetica, Arial, sans-serif;
             font-size: 8pt;
             color: #0f172a;
             line-height: 1.3;
