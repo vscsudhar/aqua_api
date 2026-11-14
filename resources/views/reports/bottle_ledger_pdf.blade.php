@@ -293,16 +293,24 @@
                     <table class="table-panel">
                         <thead>
                             <tr>
-                                <th colspan="10" class="th-title-supplier">
+                                <th colspan="19" class="th-title-supplier">
                                     RIGHT SIDE &ndash; SUPPLIER BOTTLE PURCHASE
                                 </th>
                             </tr>
                             <tr>
-                                <th class="th-col col-date">Date</th>
+                                <th rowspan="2" class="th-col col-date" style="vertical-align: middle;">Date</th>
                                 @foreach($meta['product_keys'] as $pk)
-                                    <th class="th-col">{{ $pk }}</th>
+                                    <th colspan="2" class="th-col">{{ $pk }}</th>
                                 @endforeach
-                                <th class="th-col col-total">Total</th>
+                                <th colspan="2" class="th-col col-total">Total</th>
+                            </tr>
+                            <tr>
+                                @foreach($meta['product_keys'] as $pk)
+                                    <th class="th-col" style="font-size: 5pt; padding: 1px;">Qty</th>
+                                    <th class="th-col" style="font-size: 5pt; padding: 1px;">Amt</th>
+                                @endforeach
+                                <th class="th-col col-total" style="font-size: 5pt; padding: 1px;">Qty</th>
+                                <th class="th-col col-total" style="font-size: 5pt; padding: 1px;">Amt</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -310,8 +318,10 @@
                             <tr class="row-opening">
                                 <td class="col-date">Op</td>
                                 @foreach($meta['product_keys'] as $pk)
-                                    <td>{{ number_format($opening_stock[$pk] ?? 0, 0) }} Qty</td>
+                                    <td>{{ number_format($opening_stock[$pk] ?? 0, 0) }}</td>
+                                    <td>-</td>
                                 @endforeach
+                                <td class="col-total">-</td>
                                 <td class="col-total">-</td>
                             </tr>
                             <!-- Daily Rows -->
@@ -319,18 +329,22 @@
                                 <tr class="{{ $loop->even ? 'row-even' : '' }}">
                                     <td class="col-date">{{ $r['day'] }}</td>
                                     @foreach($meta['product_keys'] as $pk)
-                                        <td>{{ ($r['products'][$pk] ?? 0) > 0 ? number_format($r['products'][$pk], 2) : '-' }}</td>
+                                        <td>{{ ($r['quantities'][$pk] ?? 0) > 0 ? number_format($r['quantities'][$pk], 0) : '-' }}</td>
+                                        <td>{{ ($r['products'][$pk] ?? 0) > 0 ? number_format($r['products'][$pk], 0) : '-' }}</td>
                                     @endforeach
-                                    <td class="col-total">{{ ($r['total_amount'] ?? 0) > 0 ? number_format($r['total_amount'], 2) : '-' }}</td>
+                                    <td class="col-total">{{ ($r['total_quantity'] ?? 0) > 0 ? number_format($r['total_quantity'], 0) : '-' }}</td>
+                                    <td class="col-total">{{ ($r['total_amount'] ?? 0) > 0 ? number_format($r['total_amount'], 0) : '-' }}</td>
                                 </tr>
                             @endforeach
                             <!-- Monthly Total Row -->
                             <tr class="row-total">
                                 <td class="col-date">Total</td>
                                 @foreach($meta['product_keys'] as $pk)
-                                    <td>{{ number_format($supplier_table['monthly_totals'][$pk] ?? 0, 2) }}</td>
+                                    <td>{{ number_format($supplier_table['monthly_qty_totals'][$pk] ?? 0, 0) }}</td>
+                                    <td>{{ number_format($supplier_table['monthly_totals'][$pk] ?? 0, 0) }}</td>
                                 @endforeach
-                                <td class="col-total">&#8377; {{ number_format($supplier_table['grand_total'], 2) }}</td>
+                                <td class="col-total">{{ number_format($supplier_table['grand_qty_total'] ?? 0, 0) }}</td>
+                                <td class="col-total">&#8377; {{ number_format($supplier_table['grand_total'], 0) }}</td>
                             </tr>
                         </tbody>
                     </table>
