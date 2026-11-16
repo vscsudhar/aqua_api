@@ -236,8 +236,8 @@ class DealerLedgerReportService
             ->whereBetween('supply_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
-        // Fetch all completed payments for the month (with supply items to accurately exclude bottle purchase payments)
-        $payments = DealerPayment::with(['supply.items.product'])
+        // Fetch all completed payments for the month (with supply items to accurately exclude bottle purchase payments, and details for split payment modes)
+        $payments = DealerPayment::with(['supply.items.product', 'details'])
             ->whereIn('dealer_id', $dealers->pluck('id'))
             ->where('status', 'completed')
             ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()])
@@ -302,7 +302,10 @@ class DealerLedgerReportService
         }
 
         // Group payments by date and dealer - filling payment amounts only (strictly excluding bottle purchase amounts)
+        // Also tracks payment methods: Cash (#15803d), UPI (#7e22ce), Card (#0f172a), Other (#0f172a)
         $dailyPayments = [];
+        $dailyPaymentBreakdown = [];
+
         foreach ($payments as $payment) {
             $fillingAmt = $this->getFillingPaymentAmount($payment);
             if ($fillingAmt <= 0.0001) {
@@ -313,11 +316,52 @@ class DealerLedgerReportService
 
             if (! isset($dailyPayments[$dateStr])) {
                 $dailyPayments[$dateStr] = [];
+                $dailyPaymentBreakdown[$dateStr] = [];
             }
             if (! isset($dailyPayments[$dateStr][$dId])) {
                 $dailyPayments[$dateStr][$dId] = 0.0;
+                $dailyPaymentBreakdown[$dateStr][$dId] = [
+                    'cash' => 0.0,
+                    'upi' => 0.0,
+                    'card' => 0.0,
+                    'other' => 0.0,
+                ];
             }
             $dailyPayments[$dateStr][$dId] += $fillingAmt;
+
+            // Map payment methods (supporting split payments & single payments)
+            $paymentTotal = (float) $payment->amount;
+            $ratio = ($paymentTotal > 0.0001) ? ($fillingAmt / $paymentTotal) : 1.0;
+
+            if ($payment->details && $payment->details->count() > 0) {
+                foreach ($payment->details as $det) {
+                    $m = strtolower(trim($det->payment_mode ?? ''));
+                    $mAmt = (float) $det->amount * $ratio;
+                    if ($mAmt <= 0.0001) {
+                        continue;
+                    }
+                    if ($m === 'cash') {
+                        $dailyPaymentBreakdown[$dateStr][$dId]['cash'] += $mAmt;
+                    } elseif ($m === 'upi') {
+                        $dailyPaymentBreakdown[$dateStr][$dId]['upi'] += $mAmt;
+                    } elseif (in_array($m, ['card', 'debit_card', 'credit_card'])) {
+                        $dailyPaymentBreakdown[$dateStr][$dId]['card'] += $mAmt;
+                    } else {
+                        $dailyPaymentBreakdown[$dateStr][$dId]['other'] += $mAmt;
+                    }
+                }
+            } else {
+                $m = strtolower(trim($payment->payment_mode ?? $payment->payment_method ?? 'cash'));
+                if ($m === 'cash') {
+                    $dailyPaymentBreakdown[$dateStr][$dId]['cash'] += $fillingAmt;
+                } elseif ($m === 'upi') {
+                    $dailyPaymentBreakdown[$dateStr][$dId]['upi'] += $fillingAmt;
+                } elseif (in_array($m, ['card', 'debit_card', 'credit_card'])) {
+                    $dailyPaymentBreakdown[$dateStr][$dId]['card'] += $fillingAmt;
+                } else {
+                    $dailyPaymentBreakdown[$dateStr][$dId]['other'] += $fillingAmt;
+                }
+            }
         }
 
         // Build Matrix Calendar Dates
@@ -338,27 +382,46 @@ class DealerLedgerReportService
                     'cane_qty' => 0,
                     'filling_amount' => 0.0,
                     'payments_received' => 0.0,
+                    'payment_cash' => 0.0,
+                    'payment_upi' => 0.0,
+                    'payment_card' => 0.0,
+                    'payment_other' => 0.0,
+                    'payment_breakdown' => [],
                     'notes' => null,
                 ],
                 'totals' => [
                     'cane_qty' => 0,
                     'filling_amount' => 0.0,
                     'payments_received' => 0.0,
+                    'payment_cash' => 0.0,
+                    'payment_upi' => 0.0,
+                    'payment_card' => 0.0,
+                    'payment_other' => 0.0,
+                    'payment_breakdown' => [],
                 ],
             ];
 
             // Others entry for this day
             if (isset($othersEntries[$dateKey])) {
                 $otherRec = $othersEntries[$dateKey];
+                $otherPayments = (float) $otherRec->payments_received;
                 $dayRow['others'] = [
                     'cane_qty' => (int) $otherRec->cane_quantity,
                     'filling_amount' => (float) $otherRec->filling_amount,
-                    'payments_received' => (float) $otherRec->payments_received,
+                    'payments_received' => $otherPayments,
+                    'payment_cash' => $otherPayments,
+                    'payment_upi' => 0.0,
+                    'payment_card' => 0.0,
+                    'payment_other' => 0.0,
+                    'payment_breakdown' => $otherPayments > 0.001 ? [
+                        ['method' => 'Cash', 'amount' => round($otherPayments, 2), 'color' => '#15803d']
+                    ] : [],
                     'notes' => $otherRec->notes,
                 ];
                 $dayRow['totals']['cane_qty'] += $dayRow['others']['cane_qty'];
                 $dayRow['totals']['filling_amount'] += $dayRow['others']['filling_amount'];
                 $dayRow['totals']['payments_received'] += $dayRow['others']['payments_received'];
+                $dayRow['totals']['payment_cash'] += $otherPayments;
             }
 
             // Dealer entries for this day
@@ -368,19 +431,87 @@ class DealerLedgerReportService
                 $fillingAmt = $dailySupplies[$dateKey][$dId]['filling_amount'] ?? 0.0;
                 $paymentAmt = $dailyPayments[$dateKey][$dId] ?? 0.0;
 
+                $pb = $dailyPaymentBreakdown[$dateKey][$dId] ?? ['cash' => 0.0, 'upi' => 0.0, 'card' => 0.0, 'other' => 0.0];
+                $cashAmt = round($pb['cash'], 2);
+                $upiAmt = round($pb['upi'], 2);
+                $cardAmt = round($pb['card'], 2);
+                $otherAmt = round($pb['other'], 2);
+
+                // If payment was recorded but no method was set, default to cash
+                if ($paymentAmt > 0.001 && ($cashAmt + $upiAmt + $cardAmt + $otherAmt) <= 0.001) {
+                    $cashAmt = round($paymentAmt, 2);
+                }
+
+                // Reconcile rounding difference so sum of payment methods strictly matches paymentAmt
+                $methodSum = round($cashAmt + $upiAmt + $cardAmt + $otherAmt, 2);
+                $diff = round($paymentAmt - $methodSum, 2);
+                if (abs($diff) > 0.0001 && $methodSum > 0.0001) {
+                    if ($cashAmt >= $upiAmt && $cashAmt >= $cardAmt && $cashAmt >= $otherAmt) {
+                        $cashAmt = round($cashAmt + $diff, 2);
+                    } elseif ($upiAmt >= $cardAmt && $upiAmt >= $otherAmt) {
+                        $upiAmt = round($upiAmt + $diff, 2);
+                    } elseif ($cardAmt >= $otherAmt) {
+                        $cardAmt = round($cardAmt + $diff, 2);
+                    } else {
+                        $otherAmt = round($otherAmt + $diff, 2);
+                    }
+                }
+
+                $breakdownList = [];
+                if ($cashAmt > 0.001) {
+                    $breakdownList[] = ['method' => 'Cash', 'amount' => $cashAmt, 'color' => '#15803d'];
+                }
+                if ($upiAmt > 0.001) {
+                    $breakdownList[] = ['method' => 'UPI', 'amount' => $upiAmt, 'color' => '#7e22ce'];
+                }
+                if ($cardAmt > 0.001) {
+                    $breakdownList[] = ['method' => 'Card', 'amount' => $cardAmt, 'color' => '#0f172a'];
+                }
+                if ($otherAmt > 0.001) {
+                    $breakdownList[] = ['method' => 'Other', 'amount' => $otherAmt, 'color' => '#0f172a'];
+                }
+
                 $dayRow['dealers'][$dId] = [
                     'cane_qty' => $caneQty,
                     'filling_amount' => round($fillingAmt, 2),
                     'payments_received' => round($paymentAmt, 2),
+                    'payment_cash' => $cashAmt,
+                    'payment_upi' => $upiAmt,
+                    'payment_card' => $cardAmt,
+                    'payment_other' => $otherAmt,
+                    'payment_breakdown' => $breakdownList,
                 ];
 
                 $dayRow['totals']['cane_qty'] += $caneQty;
                 $dayRow['totals']['filling_amount'] += $fillingAmt;
                 $dayRow['totals']['payments_received'] += $paymentAmt;
+                $dayRow['totals']['payment_cash'] += $cashAmt;
+                $dayRow['totals']['payment_upi'] += $upiAmt;
+                $dayRow['totals']['payment_card'] += $cardAmt;
+                $dayRow['totals']['payment_other'] += $otherAmt;
             }
 
             $dayRow['totals']['filling_amount'] = round($dayRow['totals']['filling_amount'], 2);
             $dayRow['totals']['payments_received'] = round($dayRow['totals']['payments_received'], 2);
+            $dayRow['totals']['payment_cash'] = round($dayRow['totals']['payment_cash'], 2);
+            $dayRow['totals']['payment_upi'] = round($dayRow['totals']['payment_upi'], 2);
+            $dayRow['totals']['payment_card'] = round($dayRow['totals']['payment_card'], 2);
+            $dayRow['totals']['payment_other'] = round($dayRow['totals']['payment_other'], 2);
+
+            $totBreakdown = [];
+            if ($dayRow['totals']['payment_cash'] > 0.001) {
+                $totBreakdown[] = ['method' => 'Cash', 'amount' => $dayRow['totals']['payment_cash'], 'color' => '#15803d'];
+            }
+            if ($dayRow['totals']['payment_upi'] > 0.001) {
+                $totBreakdown[] = ['method' => 'UPI', 'amount' => $dayRow['totals']['payment_upi'], 'color' => '#7e22ce'];
+            }
+            if ($dayRow['totals']['payment_card'] > 0.001) {
+                $totBreakdown[] = ['method' => 'Card', 'amount' => $dayRow['totals']['payment_card'], 'color' => '#0f172a'];
+            }
+            if ($dayRow['totals']['payment_other'] > 0.001) {
+                $totBreakdown[] = ['method' => 'Other', 'amount' => $dayRow['totals']['payment_other'], 'color' => '#0f172a'];
+            }
+            $dayRow['totals']['payment_breakdown'] = $totBreakdown;
 
             $dates[$day] = $dayRow;
         }

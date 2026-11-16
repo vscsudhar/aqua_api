@@ -174,7 +174,7 @@
         <h1 class="company-title">{{ $company['name'] }}</h1>
         <div class="report-subtitle">{{ $report_meta['title'] }} — {{ strtoupper($report_meta['month_name']) }}</div>
         <div class="meta-line">
-            {{ $company['address'] }} | GSTIN: {{ $company['gstin'] }} | Primary Metric: {{ $report_meta['cane_product']['name'] }} ({{ $report_meta['cane_product']['unit'] }})
+            {{ $company['address'] }} | GSTIN: {{ $company['gstin'] }} | Primary Metric: {{ $report_meta['cane_product']['name'] }} ({{ $report_meta['cane_product']['unit'] }})@if(!empty($is_detailed)) | <b>Payment Colors:</b> <span style="color:#15803d;font-weight:bold;">Cash (Green)</span> &bull; <span style="color:#7e22ce;font-weight:bold;">UPI (Purple)</span> &bull; <span style="color:#0f172a;font-weight:bold;">Card/Other (Black)</span>@endif
         </div>
     </div>
 
@@ -227,10 +227,14 @@
                                     @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
                                         <b>{{ $ent['cane_qty'] }} cans</b>
                                         @if($ent['filling_amount'] > 0)
-                                            <br><span style="color:#3730a3;font-size:4.8pt;">₹{{ round($ent['filling_amount']) }}</span>
+                                            <br><span style="color:#3730a3;font-size:4.6pt;">₹{{ round($ent['filling_amount']) }}</span>
                                         @endif
-                                        @if($ent['payments_received'] > 0)
-                                            <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($ent['payments_received']) }} pd</span>
+                                        @if(!empty($ent['payment_breakdown']))
+                                            @foreach($ent['payment_breakdown'] as $pb)
+                                                <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                            @endforeach
+                                        @elseif($ent['payments_received'] > 0)
+                                            <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;white-space:nowrap;">Cash: ₹{{ round($ent['payments_received']) }}</span>
                                         @endif
                                     @else
                                         -
@@ -244,8 +248,12 @@
                             @if($detailed)
                                 @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
                                     <b>{{ $dData['others']['cane_qty'] }} cans</b>
-                                    @if($dData['others']['payments_received'] > 0)
-                                        <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($dData['others']['payments_received']) }} pd</span>
+                                    @if(!empty($dData['others']['payment_breakdown']))
+                                        @foreach($dData['others']['payment_breakdown'] as $pb)
+                                            <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                        @endforeach
+                                    @elseif($dData['others']['payments_received'] > 0)
+                                        <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;white-space:nowrap;">Cash: ₹{{ round($dData['others']['payments_received']) }}</span>
                                     @endif
                                 @else
                                     -
@@ -258,7 +266,14 @@
                             @if($detailed)
                                 <b>{{ $dData['totals']['cane_qty'] }} cans</b>
                                 @if($dData['totals']['filling_amount'] > 0)
-                                    <br><span style="font-size:4.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                    <br><span style="font-size:4.6pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                @endif
+                                @if(!empty($dData['totals']['payment_breakdown']))
+                                    @foreach($dData['totals']['payment_breakdown'] as $pb)
+                                        <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                    @endforeach
+                                @elseif($dData['totals']['payments_received'] > 0)
+                                    <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;">₹{{ number_format($dData['totals']['payments_received'], 0) }} pd</span>
                                 @endif
                             @else
                                 {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
@@ -341,10 +356,14 @@
                                     @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
                                         <b>{{ $ent['cane_qty'] }} cans</b>
                                         @if($ent['filling_amount'] > 0)
-                                            <br><span style="color:#3730a3;font-size:4.8pt;">₹{{ round($ent['filling_amount']) }}</span>
+                                            <br><span style="color:#3730a3;font-size:4.6pt;">₹{{ round($ent['filling_amount']) }}</span>
                                         @endif
-                                        @if($ent['payments_received'] > 0)
-                                            <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($ent['payments_received']) }} pd</span>
+                                        @if(!empty($ent['payment_breakdown']))
+                                            @foreach($ent['payment_breakdown'] as $pb)
+                                                <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                            @endforeach
+                                        @elseif($ent['payments_received'] > 0)
+                                            <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;white-space:nowrap;">Cash: ₹{{ round($ent['payments_received']) }}</span>
                                         @endif
                                     @else
                                         -
@@ -358,8 +377,12 @@
                             @if($detailed)
                                 @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
                                     <b>{{ $dData['others']['cane_qty'] }} cans</b>
-                                    @if($dData['others']['payments_received'] > 0)
-                                        <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($dData['others']['payments_received']) }} pd</span>
+                                    @if(!empty($dData['others']['payment_breakdown']))
+                                        @foreach($dData['others']['payment_breakdown'] as $pb)
+                                            <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                        @endforeach
+                                    @elseif($dData['others']['payments_received'] > 0)
+                                        <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;white-space:nowrap;">Cash: ₹{{ round($dData['others']['payments_received']) }}</span>
                                     @endif
                                 @else
                                     -
@@ -372,7 +395,14 @@
                             @if($detailed)
                                 <b>{{ $dData['totals']['cane_qty'] }} cans</b>
                                 @if($dData['totals']['filling_amount'] > 0)
-                                    <br><span style="font-size:4.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                    <br><span style="font-size:4.6pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                @endif
+                                @if(!empty($dData['totals']['payment_breakdown']))
+                                    @foreach($dData['totals']['payment_breakdown'] as $pb)
+                                        <br><span style="color:{{ $pb['color'] }};font-size:4.6pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
+                                    @endforeach
+                                @elseif($dData['totals']['payments_received'] > 0)
+                                    <br><span style="color:#15803d;font-size:4.6pt;font-weight:bold;">₹{{ number_format($dData['totals']['payments_received'], 0) }} pd</span>
                                 @endif
                             @else
                                 {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
