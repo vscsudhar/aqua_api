@@ -165,7 +165,8 @@ class BillingService
                 'customer_company_id' => ($customerType === 'company') ? $customerCompanyId : null,
                 'invoice_no' => $invoiceNo,
                 'invoice_date' => $invoiceDate,
-                'due_date' => ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : Carbon::parse($invoiceDate)->addDays(15)->toDateString(),
+                'due_date' => ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : null,
+                'payment_mode' => ! empty($data['payment_mode']) ? trim($data['payment_mode']) : null,
                 'dealer_id' => ($customerType === 'company') ? null : $dealer?->id,
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
@@ -200,7 +201,7 @@ class BillingService
             ]);
 
             // Save line items
-            $this->saveInvoiceItems($invoice, $data['items'] ?? [], $isInterstate);
+            $this->saveInvoiceItems($invoice, $data['items'] ?? [], $isInterstate, $data['additional_taxes'] ?? null);
 
             // If finalized immediately and not linked to an existing supply, synchronize ledger
             if ($status === 'finalized') {
@@ -297,8 +298,11 @@ class BillingService
                     ->where('reference_no', $oldInvoiceNo)
                     ->update(['reference_no' => $newInvoiceNo]);
             }
-            if (isset($data['due_date'])) {
+            if (array_key_exists('due_date', $data)) {
                 $invoice->due_date = ! empty($data['due_date']) ? Carbon::parse($data['due_date'])->toDateString() : null;
+            }
+            if (array_key_exists('payment_mode', $data)) {
+                $invoice->payment_mode = ! empty($data['payment_mode']) ? trim($data['payment_mode']) : null;
             }
             if (isset($data['customer_type'])) {
                 $invoice->customer_type = $data['customer_type'];
@@ -354,7 +358,12 @@ class BillingService
 
             // Re-save line items
             $invoice->items()->delete();
-            $this->saveInvoiceItems($invoice, $data['items'] ?? [], $isInterstate);
+            $this->saveInvoiceItems(
+                $invoice,
+                $data['items'] ?? [],
+                $isInterstate,
+                array_key_exists('additional_taxes', $data) ? $data['additional_taxes'] : $invoice->additional_taxes
+            );
 
             // Synchronize Payment for Draft Updates
             if (array_key_exists('paid_amount', $data) || array_key_exists('payment_amount', $data)) {
@@ -636,7 +645,7 @@ class BillingService
     /**
      * Save line items and recalculate invoice totals.
      */
-    protected function saveInvoiceItems(Invoice $invoice, array $items, bool $isInterstate): void
+    protected function saveInvoiceItems(Invoice $invoice, array $items, bool $isInterstate, ?array $additionalTaxesInput = null): void
     {
         if (empty($items)) {
             throw ValidationException::withMessages([
@@ -692,10 +701,36 @@ class BillingService
             ]);
         }
 
-        $taxTotal = round($cgstTotal + $sgstTotal + $igstTotal, 2);
+        // Additional Taxes (for IGST mode)
+        $additionalTaxes = [];
+        $additionalTaxTotal = 0.00;
+        if ($isInterstate && !$isWithoutGst && !empty($additionalTaxesInput)) {
+            foreach ($additionalTaxesInput as $taxEntry) {
+                $tName = trim($taxEntry['name'] ?? '');
+                $tRate = (float) ($taxEntry['rate'] ?? 0);
+                if (!empty($tName) && $tRate > 0) {
+                    $tAmt = round($taxableAmountTotal * ($tRate / 100), 2);
+                    $additionalTaxTotal += $tAmt;
+                    $additionalTaxes[] = [
+                        'name' => $tName,
+                        'rate' => $tRate,
+                        'amount' => $tAmt,
+                    ];
+                }
+            }
+        }
+
+        $invoice->additional_taxes = !empty($additionalTaxes) ? $additionalTaxes : null;
+        $invoice->additional_tax_total = round($additionalTaxTotal, 2);
+
+        $taxTotal = round($cgstTotal + $sgstTotal + $igstTotal + $additionalTaxTotal, 2);
         $rawGrand = round($taxableAmountTotal + $taxTotal, 2);
-        $roundedGrand = round($rawGrand);
+        $roundedGrand = (float) ceil((string) $rawGrand);
         $roundOff = round($roundedGrand - $rawGrand, 2);
+        if ($roundOff < 0.00001) {
+            $roundOff = 0.00;
+            $roundedGrand = $rawGrand;
+        }
 
         $invoice->subtotal = $subtotal;
         $invoice->discount_total = $discountTotal;
