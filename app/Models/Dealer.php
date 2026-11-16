@@ -117,8 +117,9 @@ class Dealer extends Model
     }
 
     /**
-     * Outstanding balance derived strictly from stored records.
+     * Outstanding balance derived strictly from stored dealer records.
      * Opening Balance + Delivered Supplies - Completed Payments
+     * (Invoices belong strictly to the billing module and do not affect dealer accounting).
      */
     public function calculateOutstandingBalance(): float
     {
@@ -126,23 +127,11 @@ class Dealer extends Model
             ->where('status', 'delivered')
             ->sum('total_amount');
 
-        // Only standalone finalized invoices (derived invoices are already counted in supplies)
-        $standaloneInvoices = (float) $this->invoices()
-            ->whereNull('dealer_supply_id')
-            ->where('status', 'finalized')
-            ->sum('grand_total');
-
         $completedPayments = (float) $this->payments()
             ->where('status', 'completed')
             ->sum('amount');
 
-        $standaloneInvoicePayments = (float) InvoicePayment::whereHas('invoice', function ($q) {
-            $q->where('dealer_id', $this->id)->whereNull('dealer_supply_id');
-        })->sum('amount');
-
-        $creditNotesTotal = (float) $this->creditNotes()->sum('total_amount');
-
-        return round((float) $this->opening_balance + $deliveredSupplies + $standaloneInvoices - $completedPayments - $standaloneInvoicePayments - $creditNotesTotal, 2);
+        return round((float) $this->opening_balance + $deliveredSupplies - $completedPayments, 2);
     }
 
     public function isReferencedInTransactions(): bool

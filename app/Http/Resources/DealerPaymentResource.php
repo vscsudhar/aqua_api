@@ -26,6 +26,16 @@ class DealerPaymentResource extends JsonResource
             'notes' => $this->notes ?? $this->remarks,
             'collected_by_name' => $this->collector?->name ?? $this->creator?->name,
             'created_at' => $this->created_at?->toIso8601String(),
+            'is_split' => $this->isSplit(),
+            'payment_splits' => $this->details ? $this->details->map(function ($d) {
+                return [
+                    'id' => $d->id,
+                    'payment_mode' => $d->payment_mode,
+                    'amount' => (float) $d->amount,
+                    'reference_no' => $d->reference_no,
+                    'notes' => $d->notes,
+                ];
+            }) : [],
         ];
     }
 }

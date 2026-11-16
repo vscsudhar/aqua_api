@@ -632,9 +632,10 @@ class DealerLedgerReportService
     /**
      * Exports the monthly dealer ledger as a styled A4 landscape PDF.
      */
-    public function exportPdf(int $year, int $month, array $dealerIds = [], ?int $caneProductId = null)
+    public function exportPdf(int $year, int $month, array $dealerIds = [], ?int $caneProductId = null, bool $detailed = false)
     {
         $data = $this->generateMonthlyLedger($year, $month, $dealerIds, $caneProductId);
+        $data['is_detailed'] = $detailed;
 
         $pdf = Pdf::loadView('reports.dealer_ledger_pdf', $data);
         $pdf->setPaper('a4', 'landscape');
@@ -643,13 +644,13 @@ class DealerLedgerReportService
             'isHtml5ParserEnabled' => true,
             'chroot' => [public_path(), base_path(), storage_path()],
             'defaultFont' => 'Noto Sans',
-            'margin_top' => 8,
-            'margin_right' => 8,
-            'margin_bottom' => 8,
-            'margin_left' => 8,
+            'margin_top' => 4,
+            'margin_right' => 5,
+            'margin_bottom' => 4,
+            'margin_left' => 5,
         ]);
 
-        $fileName = sprintf('Dealer_Ledger_Report_%d_%02d.pdf', $year, $month);
+        $fileName = sprintf('Dealer_Ledger_Report_%d_%02d%s.pdf', $year, $month, $detailed ? '_Detailed' : '');
 
         return $pdf->download($fileName);
     }

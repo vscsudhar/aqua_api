@@ -28,11 +28,16 @@ class StoreDealerSupplyRequest extends FormRequest
             'items.*.notes' => ['nullable', 'string', 'max:255'],
             // Optional immediate payment
             'payment_amount' => ['nullable', 'numeric', 'min:0'],
-            'payment_method' => ['nullable', 'in:cash,cheque,upi,bank_transfer,neft'],
+            'payment_method' => ['nullable', 'string', 'max:50'],
             'payment_date' => ['nullable', 'date'],
             'payment_reference' => ['nullable', 'string', 'max:100'],
             'payment_notes' => ['nullable', 'string', 'max:500'],
             'include_in_ledger_amount' => ['nullable', 'boolean'],
+            'payment_splits' => ['nullable', 'array'],
+            'payment_splits.*.payment_mode' => ['required_with:payment_splits', 'string'],
+            'payment_splits.*.amount' => ['required_with:payment_splits', 'numeric', 'gt:0'],
+            'payment_splits.*.reference_no' => ['nullable', 'string', 'max:100'],
+            'payment_splits.*.notes' => ['nullable', 'string', 'max:255'],
         ];
     }
 }

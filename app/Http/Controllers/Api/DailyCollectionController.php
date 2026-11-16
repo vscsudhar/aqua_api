@@ -59,7 +59,7 @@ class DailyCollectionController extends Controller
      */
     public function suppliesIndex(Request $request): JsonResponse
     {
-        $query = DealerSupply::with(['dealer', 'items.product', 'payments'])
+        $query = DealerSupply::with(['dealer', 'items.product', 'payments.details'])
             ->orderBy('supply_date', 'desc')
             ->orderBy('id', 'desc');
 
@@ -139,7 +139,7 @@ class DailyCollectionController extends Controller
      */
     public function suppliesShow(int $id): JsonResponse
     {
-        $supply = DealerSupply::with(['dealer', 'items.product', 'payments', 'creator', 'updater'])
+        $supply = DealerSupply::with(['dealer', 'items.product', 'payments.details', 'creator', 'updater'])
             ->findOrFail($id);
 
         return response()->json([
@@ -183,7 +183,7 @@ class DailyCollectionController extends Controller
      */
     public function paymentsIndex(Request $request): JsonResponse
     {
-        $query = DealerPayment::with(['dealer', 'supply', 'collector'])
+        $query = DealerPayment::with(['dealer', 'supply', 'collector', 'details'])
             ->orderBy('payment_date', 'desc')
             ->orderBy('id', 'desc');
 
@@ -235,7 +235,7 @@ class DailyCollectionController extends Controller
      */
     public function paymentsShow(int $id): JsonResponse
     {
-        $payment = DealerPayment::with(['dealer', 'supply', 'collector'])->findOrFail($id);
+        $payment = DealerPayment::with(['dealer', 'supply', 'collector', 'details'])->findOrFail($id);
 
         return response()->json([
             'status' => 'success',
@@ -260,6 +260,11 @@ class DailyCollectionController extends Controller
             'remarks' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:500'],
             'include_in_ledger_amount' => ['nullable', 'boolean'],
+            'payment_splits' => ['nullable', 'array'],
+            'payment_splits.*.payment_mode' => ['required_with:payment_splits', 'string'],
+            'payment_splits.*.amount' => ['required_with:payment_splits', 'numeric', 'gt:0'],
+            'payment_splits.*.reference_no' => ['nullable', 'string', 'max:100'],
+            'payment_splits.*.notes' => ['nullable', 'string', 'max:255'],
         ]);
 
         $updated = $this->collectionService->updatePayment($payment, $validated, $request->user());

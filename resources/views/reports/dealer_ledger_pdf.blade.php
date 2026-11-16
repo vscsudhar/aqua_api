@@ -6,7 +6,7 @@
     <style>
         @page {
             size: A4 landscape;
-            margin: 8mm 6mm 8mm 6mm;
+            margin: 3mm 4mm 3mm 4mm;
         }
         @font-face {
             font-family: 'Noto Sans';
@@ -22,48 +22,51 @@
         }
         body {
             font-family: 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            font-size: 7.5pt;
+            font-size: {{ !empty($is_detailed) ? '5.1pt' : '5.3pt' }};
             color: #1a202c;
             margin: 0;
             padding: 0;
             background: #fff;
+            line-height: 1.0;
         }
         .header {
             text-align: center;
-            margin-bottom: 6px;
-            border-bottom: 2px solid #003366;
-            padding-bottom: 4px;
+            margin-bottom: 2px;
+            border-bottom: 1.2px solid #003366;
+            padding-bottom: 1px;
         }
         .company-title {
-            font-size: 14pt;
+            font-size: 10pt;
             font-weight: bold;
             color: #003366;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.3px;
             margin: 0;
+            line-height: 1.05;
         }
         .report-subtitle {
-            font-size: 9.5pt;
+            font-size: 7.2pt;
             font-weight: bold;
             color: #007791;
-            margin: 2px 0;
+            margin: 0;
         }
         .meta-line {
-            font-size: 7pt;
+            font-size: 5.2pt;
             color: #64748b;
         }
         table.matrix {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 4px;
+            margin-top: 2px;
             table-layout: fixed;
         }
         table.matrix th, table.matrix td {
-            border: 0.5pt solid #cbd5e1;
-            padding: 2.5px 2px;
+            border: 0.4pt solid #cbd5e1;
+            padding: {{ !empty($is_detailed) ? '0.6px 1px' : '0.6px 1.5px' }};
             text-align: center;
-            font-size: 6.8pt;
+            font-size: {{ !empty($is_detailed) ? '5.1pt' : '5.3pt' }};
             overflow: hidden;
             word-wrap: break-word;
+            line-height: 1.0;
         }
         thead {
             display: table-header-group;
@@ -75,16 +78,17 @@
             background-color: #003366;
             color: #ffffff;
             font-weight: bold;
-            font-size: 7pt;
+            font-size: {{ !empty($is_detailed) ? '5.3pt' : '5.5pt' }};
+            padding: 1px 1.5px;
         }
         .th-date {
-            width: 38px;
+            width: 44px;
         }
         .th-day {
             width: 22px;
         }
         .th-total {
-            width: 48px;
+            width: 52px;
             background-color: #0f172a;
             color: #ffffff;
             font-weight: bold;
@@ -92,10 +96,12 @@
         .period-banner {
             background-color: #e2e8f0;
             font-weight: bold;
-            font-size: 7.5pt;
+            font-size: {{ !empty($is_detailed) ? '5.6pt' : '6.2pt' }};
             color: #0f172a;
             text-align: left;
-            padding-left: 6px;
+            padding-left: 4px;
+            padding-top: 1px;
+            padding-bottom: 1px;
         }
         .row-opening {
             background-color: #fef3c7;
@@ -131,32 +137,35 @@
             font-weight: bold;
         }
         .legend {
-            margin-top: 8px;
-            font-size: 6.5pt;
+            margin-top: 4px;
+            font-size: 5.5pt;
             color: #475569;
         }
         .legend-box {
             display: inline-block;
-            width: 9px;
-            height: 9px;
+            width: 7px;
+            height: 7px;
             margin-right: 2px;
             vertical-align: middle;
-            border: 0.5pt solid #94a3b8;
+            border: 0.4pt solid #94a3b8;
         }
         .product-summary-table {
-            width: 60%;
-            margin-top: 8px;
+            width: 100%;
+            margin-top: 4px;
             border-collapse: collapse;
-            font-size: 6.8pt;
+            font-size: 5.8pt;
         }
         .product-summary-table th, .product-summary-table td {
-            border: 0.5pt solid #cbd5e1;
-            padding: 2.5px 5px;
+            border: 0.4pt solid #cbd5e1;
+            padding: 1.5px 4px;
         }
         .product-summary-table th {
             background-color: #003366;
             color: #ffffff;
             font-weight: bold;
+        }
+        .page-break {
+            page-break-before: always;
         }
     </style>
 </head>
@@ -165,12 +174,13 @@
         <h1 class="company-title">{{ $company['name'] }}</h1>
         <div class="report-subtitle">{{ $report_meta['title'] }} — {{ strtoupper($report_meta['month_name']) }}</div>
         <div class="meta-line">
-            {{ $company['address'] }} | GSTIN: {{ $company['gstin'] }} | Primary Cane Metric: {{ $report_meta['cane_product']['name'] }} ({{ $report_meta['cane_product']['unit'] }})
+            {{ $company['address'] }} | GSTIN: {{ $company['gstin'] }} | Primary Metric: {{ $report_meta['cane_product']['name'] }} ({{ $report_meta['cane_product']['unit'] }})
         </div>
     </div>
 
     @php
         $dealerCount = count($dealers);
+        $detailed = !empty($is_detailed);
     @endphp
 
     <table class="matrix">
@@ -179,9 +189,9 @@
                 <th class="th-main th-date">Date</th>
                 <th class="th-main th-day">Day</th>
                 @foreach($dealers as $d)
-                    <th class="th-main">{{ $d['name'] }}<br><span style="font-size:5.5pt;font-weight:normal;">({{ $d['code'] }})</span></th>
+                    <th class="th-main">{{ $d['name'] }}<br><span style="font-size:4.8pt;font-weight:normal;">({{ $d['code'] }})</span></th>
                 @endforeach
-                <th class="th-main" style="background-color:#1e293b;">Others<br><span style="font-size:5.5pt;font-weight:normal;">(Retail)</span></th>
+                <th class="th-main" style="background-color:#1e293b;">Others<br><span style="font-size:4.8pt;font-weight:normal;">(Retail)</span></th>
                 <th class="th-main th-total">TOTAL</th>
             </tr>
         </thead>
@@ -203,40 +213,55 @@
                 <td style="font-weight:bold;">{{ number_format($period1_summary['totals']['opening_balance'], 2) }}</td>
             </tr>
 
-            {{-- Period 1 Daily Rows --}}
+            {{-- Period 1 Daily Rows (Days 1 to 15) --}}
             @for($day = 1; $day <= 15; $day++)
                 @php $dData = $dates[$day - 1] ?? null; @endphp
                 @if($dData)
                     <tr class="{{ $day % 2 == 0 ? 'row-even' : '' }}">
                         <td>{{ $dData['formatted'] }}</td>
-                        <td>{{ $dData['day_name'] }}</td>
+                        <td style="{{ $dData['day_name'] === 'Sun' ? 'color:#ef4444;font-weight:bold;' : '' }}">{{ $dData['day_name'] }}</td>
                         @foreach($dealers as $d)
                             @php $ent = $dData['dealers'][$d['id']]; @endphp
                             <td>
-                                @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
-                                    <b>{{ $ent['cane_qty'] }}</b>
-                                    @if($ent['payments_received'] > 0)
-                                        <br><span style="color:#15803d;font-size:5.8pt;">₹{{ round($ent['payments_received']) }}</span>
+                                @if($detailed)
+                                    @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
+                                        <b>{{ $ent['cane_qty'] }} cans</b>
+                                        @if($ent['filling_amount'] > 0)
+                                            <br><span style="color:#3730a3;font-size:4.8pt;">₹{{ round($ent['filling_amount']) }}</span>
+                                        @endif
+                                        @if($ent['payments_received'] > 0)
+                                            <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($ent['payments_received']) }} pd</span>
+                                        @endif
+                                    @else
+                                        -
                                     @endif
                                 @else
-                                    -
+                                    {{ $ent['cane_qty'] > 0 ? $ent['cane_qty'] : '-' }}
                                 @endif
                             </td>
                         @endforeach
                         <td>
-                            @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
-                                <b>{{ $dData['others']['cane_qty'] }}</b>
-                                @if($dData['others']['payments_received'] > 0)
-                                    <br><span style="color:#15803d;font-size:5.8pt;">₹{{ round($dData['others']['payments_received']) }}</span>
+                            @if($detailed)
+                                @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
+                                    <b>{{ $dData['others']['cane_qty'] }} cans</b>
+                                    @if($dData['others']['payments_received'] > 0)
+                                        <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($dData['others']['payments_received']) }} pd</span>
+                                    @endif
+                                @else
+                                    -
                                 @endif
                             @else
-                                -
+                                {{ $dData['others']['cane_qty'] > 0 ? $dData['others']['cane_qty'] : '-' }}
                             @endif
                         </td>
                         <td style="font-weight:bold;background-color:#f1f5f9;">
-                            <b>{{ $dData['totals']['cane_qty'] }}</b>
-                            @if($dData['totals']['filling_amount'] > 0)
-                                <br><span style="font-size:5.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                            @if($detailed)
+                                <b>{{ $dData['totals']['cane_qty'] }} cans</b>
+                                @if($dData['totals']['filling_amount'] > 0)
+                                    <br><span style="font-size:4.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                @endif
+                            @else
+                                {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
                             @endif
                         </td>
                     </tr>
@@ -285,9 +310,9 @@
                 <td>{{ number_format($period1_summary['totals']['closing_balance'], 2) }}</td>
             </tr>
 
-            {{-- PERIOD 2 (Days 16 - End) --}}
+            {{-- PERIOD 2 (Days 16 - End of Month) --}}
             <tr>
-                <td colspan="{{ 3 + $dealerCount + 1 }}" class="period-banner" style="background-color:#cbd5e1;margin-top:6px;">
+                <td colspan="{{ 3 + $dealerCount + 1 }}" class="period-banner" style="background-color:#cbd5e1;">
                     ▶ PERIOD 2 : DAYS 16 - {{ $report_meta['days_in_month'] }} ({{ strtoupper($report_meta['month_name']) }})
                 </td>
             </tr>
@@ -308,34 +333,49 @@
                 @if($dData)
                     <tr class="{{ $day % 2 == 0 ? 'row-even' : '' }}">
                         <td>{{ $dData['formatted'] }}</td>
-                        <td>{{ $dData['day_name'] }}</td>
+                        <td style="{{ $dData['day_name'] === 'Sun' ? 'color:#ef4444;font-weight:bold;' : '' }}">{{ $dData['day_name'] }}</td>
                         @foreach($dealers as $d)
                             @php $ent = $dData['dealers'][$d['id']]; @endphp
                             <td>
-                                @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
-                                    <b>{{ $ent['cane_qty'] }}</b>
-                                    @if($ent['payments_received'] > 0)
-                                        <br><span style="color:#15803d;font-size:5.8pt;">₹{{ round($ent['payments_received']) }}</span>
+                                @if($detailed)
+                                    @if($ent['cane_qty'] > 0 || $ent['filling_amount'] > 0 || $ent['payments_received'] > 0)
+                                        <b>{{ $ent['cane_qty'] }} cans</b>
+                                        @if($ent['filling_amount'] > 0)
+                                            <br><span style="color:#3730a3;font-size:4.8pt;">₹{{ round($ent['filling_amount']) }}</span>
+                                        @endif
+                                        @if($ent['payments_received'] > 0)
+                                            <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($ent['payments_received']) }} pd</span>
+                                        @endif
+                                    @else
+                                        -
                                     @endif
                                 @else
-                                    -
+                                    {{ $ent['cane_qty'] > 0 ? $ent['cane_qty'] : '-' }}
                                 @endif
                             </td>
                         @endforeach
                         <td>
-                            @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
-                                <b>{{ $dData['others']['cane_qty'] }}</b>
-                                @if($dData['others']['payments_received'] > 0)
-                                    <br><span style="color:#15803d;font-size:5.8pt;">₹{{ round($dData['others']['payments_received']) }}</span>
+                            @if($detailed)
+                                @if($dData['others']['cane_qty'] > 0 || $dData['others']['payments_received'] > 0)
+                                    <b>{{ $dData['others']['cane_qty'] }} cans</b>
+                                    @if($dData['others']['payments_received'] > 0)
+                                        <br><span style="color:#15803d;font-size:4.8pt;font-weight:bold;">₹{{ round($dData['others']['payments_received']) }} pd</span>
+                                    @endif
+                                @else
+                                    -
                                 @endif
                             @else
-                                -
+                                {{ $dData['others']['cane_qty'] > 0 ? $dData['others']['cane_qty'] : '-' }}
                             @endif
                         </td>
                         <td style="font-weight:bold;background-color:#f1f5f9;">
-                            <b>{{ $dData['totals']['cane_qty'] }}</b>
-                            @if($dData['totals']['filling_amount'] > 0)
-                                <br><span style="font-size:5.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                            @if($detailed)
+                                <b>{{ $dData['totals']['cane_qty'] }} cans</b>
+                                @if($dData['totals']['filling_amount'] > 0)
+                                    <br><span style="font-size:4.8pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
+                                @endif
+                            @else
+                                {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
                             @endif
                         </td>
                     </tr>
@@ -384,72 +424,129 @@
                 <td>{{ number_format($period2_summary['totals']['closing_balance'], 2) }}</td>
             </tr>
 
-            {{-- MONTH GRAND TOTALS --}}
-            <tr>
-                <td colspan="{{ 3 + $dealerCount + 1 }}" style="background-color:#003366;color:#ffffff;font-weight:bold;font-size:8pt;text-align:center;padding:3px;">
-                    ★ MONTH GRAND TOTALS ({{ strtoupper($report_meta['month_name']) }}) ★
-                </td>
-            </tr>
-            <tr class="row-opening">
-                <td colspan="2" style="text-align:right;">MONTH OPENING BAL</td>
-                @foreach($dealers as $d)
-                    <td>{{ number_format($month_summary['dealers'][$d['id']]['month_opening_balance'], 2) }}</td>
-                @endforeach
-                <td>{{ number_format($month_summary['others']['month_opening_balance'], 2) }}</td>
-                <td>{{ number_format($month_summary['totals']['month_opening_balance'], 2) }}</td>
-            </tr>
-            <tr class="row-canes">
-                <td colspan="2" style="text-align:right;">MONTH TOTAL CANES</td>
-                @foreach($dealers as $d)
-                    <td>{{ $month_summary['dealers'][$d['id']]['total_canes'] }}</td>
-                @endforeach
-                <td>{{ $month_summary['others']['total_canes'] }}</td>
-                <td>{{ $month_summary['totals']['total_canes'] }}</td>
-            </tr>
-            <tr class="row-filling">
-                <td colspan="2" style="text-align:right;">MONTH FILLING (₹)</td>
-                @foreach($dealers as $d)
-                    <td>{{ number_format($month_summary['dealers'][$d['id']]['total_filling'], 2) }}</td>
-                @endforeach
-                <td>{{ number_format($month_summary['others']['total_filling'], 2) }}</td>
-                <td>{{ number_format($month_summary['totals']['total_filling'], 2) }}</td>
-            </tr>
-            <tr class="row-payments">
-                <td colspan="2" style="text-align:right;">MONTH PAYMENTS (₹)</td>
-                @foreach($dealers as $d)
-                    <td>{{ number_format($month_summary['dealers'][$d['id']]['total_payments'], 2) }}</td>
-                @endforeach
-                <td>{{ number_format($month_summary['others']['total_payments'], 2) }}</td>
-                <td>{{ number_format($month_summary['totals']['total_payments'], 2) }}</td>
-            </tr>
-            <tr class="row-closing">
-                <td colspan="2" style="text-align:right;font-size:7.5pt;">MONTH CLOSING BAL</td>
-                @foreach($dealers as $d)
-                    <td style="font-size:7.5pt;">{{ number_format($month_summary['dealers'][$d['id']]['month_closing_balance'], 2) }}</td>
-                @endforeach
-                <td style="font-size:7.5pt;">{{ number_format($month_summary['others']['month_closing_balance'], 2) }}</td>
-                <td style="font-size:8pt;font-weight:bold;background-color:#ffe4e6;color:#be123c;">{{ number_format($month_summary['totals']['month_closing_balance'], 2) }}</td>
-            </tr>
+            @if(!$detailed)
+                {{-- In Compact / Unchecked mode, Month Grand Totals fits directly on Page 1 --}}
+                <tr>
+                    <td colspan="{{ 3 + $dealerCount + 1 }}" style="background-color:#003366;color:#ffffff;font-weight:bold;font-size:6.5pt;text-align:center;padding:1px;">
+                        ★ MONTH GRAND TOTALS ({{ strtoupper($report_meta['month_name']) }}) ★
+                    </td>
+                </tr>
+                <tr class="row-opening">
+                    <td colspan="2" style="text-align:right;">MONTH OPENING BAL</td>
+                    @foreach($dealers as $d)
+                        <td>{{ number_format($month_summary['dealers'][$d['id']]['month_opening_balance'], 2) }}</td>
+                    @endforeach
+                    <td>{{ number_format($month_summary['others']['month_opening_balance'], 2) }}</td>
+                    <td>{{ number_format($month_summary['totals']['month_opening_balance'], 2) }}</td>
+                </tr>
+                <tr class="row-canes">
+                    <td colspan="2" style="text-align:right;">MONTH TOTAL CANES</td>
+                    @foreach($dealers as $d)
+                        <td>{{ $month_summary['dealers'][$d['id']]['total_canes'] }}</td>
+                    @endforeach
+                    <td>{{ $month_summary['others']['total_canes'] }}</td>
+                    <td>{{ $month_summary['totals']['total_canes'] }}</td>
+                </tr>
+                <tr class="row-filling">
+                    <td colspan="2" style="text-align:right;">MONTH FILLING (₹)</td>
+                    @foreach($dealers as $d)
+                        <td>{{ number_format($month_summary['dealers'][$d['id']]['total_filling'], 2) }}</td>
+                    @endforeach
+                    <td>{{ number_format($month_summary['others']['total_filling'], 2) }}</td>
+                    <td>{{ number_format($month_summary['totals']['total_filling'], 2) }}</td>
+                </tr>
+                <tr class="row-payments">
+                    <td colspan="2" style="text-align:right;">MONTH PAYMENTS (₹)</td>
+                    @foreach($dealers as $d)
+                        <td>{{ number_format($month_summary['dealers'][$d['id']]['total_payments'], 2) }}</td>
+                    @endforeach
+                    <td>{{ number_format($month_summary['others']['total_payments'], 2) }}</td>
+                    <td>{{ number_format($month_summary['totals']['total_payments'], 2) }}</td>
+                </tr>
+                <tr class="row-closing">
+                    <td colspan="2" style="text-align:right;font-size:6pt;">MONTH CLOSING BAL</td>
+                    @foreach($dealers as $d)
+                        <td style="font-size:6pt;">{{ number_format($month_summary['dealers'][$d['id']]['month_closing_balance'], 2) }}</td>
+                    @endforeach
+                    <td style="font-size:6pt;">{{ number_format($month_summary['others']['month_closing_balance'], 2) }}</td>
+                    <td style="font-size:6.2pt;font-weight:bold;background-color:#ffe4e6;color:#be123c;">{{ number_format($month_summary['totals']['month_closing_balance'], 2) }}</td>
+                </tr>
+            @endif
         </tbody>
     </table>
 
-    {{-- LEGEND & PRODUCT BREAKDOWN --}}
-    <table style="width:100%;margin-top:10px;">
-        <tr>
-            <td style="vertical-align:top;width:45%;">
-                <div class="legend">
-                    <b>COLOR-CODED MATRIX LEGEND:</b><br>
-                    <span class="legend-box" style="background:#fef3c7;"></span> Opening Balance &nbsp;&nbsp;
-                    <span class="legend-box" style="background:#e0f2fe;"></span> Daily Canes Delivered &nbsp;&nbsp;
-                    <span class="legend-box" style="background:#e0e7ff;"></span> Filling / Supply Amount<br>
-                    <span class="legend-box" style="background:#ffedd5;"></span> Total Amount Due &nbsp;&nbsp;
-                    <span class="legend-box" style="background:#dcfce7;"></span> Payments Received &nbsp;&nbsp;
-                    <span class="legend-box" style="background:#ffe4e6;"></span> Closing Balance<br>
-                    <span style="color:#64748b;font-style:italic;">* P1 Closing Balance carries forward into P2 Opening Balance automatically.</span>
-                </div>
-            </td>
-            <td style="vertical-align:top;width:55%;">
-                @if(count($product_breakdown) > 0)
+    @if($detailed)
+        {{-- In Detailed mode, Month Grand Totals and Product Summary start on Page 2 if needed --}}
+        <div class="page-break" style="margin-top:6px;">
+            <div class="header">
+                <h2 class="company-title" style="font-size:10pt;">{{ $company['name'] }} — Monthly Summary & Product Breakdown</h2>
+                <div class="meta-line">{{ strtoupper($report_meta['month_name']) }} | Dealer Ledger Summary</div>
+            </div>
+
+            <table class="matrix" style="margin-top:4px;">
+                <thead>
+                    <tr>
+                        <th class="th-main th-date" colspan="2">Metric</th>
+                        @foreach($dealers as $d)
+                            <th class="th-main">{{ $d['name'] }}<br><span style="font-size:4.8pt;font-weight:normal;">({{ $d['code'] }})</span></th>
+                        @endforeach
+                        <th class="th-main" style="background-color:#1e293b;">Others</th>
+                        <th class="th-main th-total">TOTAL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="{{ 3 + $dealerCount + 1 }}" style="background-color:#003366;color:#ffffff;font-weight:bold;font-size:6.5pt;text-align:center;padding:2px;">
+                            ★ MONTH GRAND TOTALS ({{ strtoupper($report_meta['month_name']) }}) ★
+                        </td>
+                    </tr>
+                    <tr class="row-opening">
+                        <td colspan="2" style="text-align:right;">MONTH OPENING BAL</td>
+                        @foreach($dealers as $d)
+                            <td>{{ number_format($month_summary['dealers'][$d['id']]['month_opening_balance'], 2) }}</td>
+                        @endforeach
+                        <td>{{ number_format($month_summary['others']['month_opening_balance'], 2) }}</td>
+                        <td>{{ number_format($month_summary['totals']['month_opening_balance'], 2) }}</td>
+                    </tr>
+                    <tr class="row-canes">
+                        <td colspan="2" style="text-align:right;">MONTH TOTAL CANES</td>
+                        @foreach($dealers as $d)
+                            <td>{{ $month_summary['dealers'][$d['id']]['total_canes'] }}</td>
+                        @endforeach
+                        <td>{{ $month_summary['others']['total_canes'] }}</td>
+                        <td>{{ $month_summary['totals']['total_canes'] }}</td>
+                    </tr>
+                    <tr class="row-filling">
+                        <td colspan="2" style="text-align:right;">MONTH FILLING (₹)</td>
+                        @foreach($dealers as $d)
+                            <td>{{ number_format($month_summary['dealers'][$d['id']]['total_filling'], 2) }}</td>
+                        @endforeach
+                        <td>{{ number_format($month_summary['others']['total_filling'], 2) }}</td>
+                        <td>{{ number_format($month_summary['totals']['total_filling'], 2) }}</td>
+                    </tr>
+                    <tr class="row-payments">
+                        <td colspan="2" style="text-align:right;">MONTH PAYMENTS (₹)</td>
+                        @foreach($dealers as $d)
+                            <td>{{ number_format($month_summary['dealers'][$d['id']]['total_payments'], 2) }}</td>
+                        @endforeach
+                        <td>{{ number_format($month_summary['others']['total_payments'], 2) }}</td>
+                        <td>{{ number_format($month_summary['totals']['total_payments'], 2) }}</td>
+                    </tr>
+                    <tr class="row-closing">
+                        <td colspan="2" style="text-align:right;font-size:6.2pt;">MONTH CLOSING BAL</td>
+                        @foreach($dealers as $d)
+                            <td style="font-size:6.2pt;">{{ number_format($month_summary['dealers'][$d['id']]['month_closing_balance'], 2) }}</td>
+                        @endforeach
+                        <td style="font-size:6.2pt;">{{ number_format($month_summary['others']['month_closing_balance'], 2) }}</td>
+                        <td style="font-size:6.5pt;font-weight:bold;background-color:#ffe4e6;color:#be123c;">{{ number_format($month_summary['totals']['month_closing_balance'], 2) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            {{-- Product Breakdown Table --}}
+            @if(count($product_breakdown) > 0)
+                <div style="margin-top:10px;">
+                    <div style="font-weight:bold;font-size:7pt;color:#003366;margin-bottom:2px;">Product-Wise Detailed Summary:</div>
                     <table class="product-summary-table">
                         <thead>
                             <tr>
@@ -470,9 +567,9 @@
                             @endforeach
                         </tbody>
                     </table>
-                @endif
-            </td>
-        </tr>
-    </table>
+                </div>
+            @endif
+        </div>
+    @endif
 </body>
 </html>

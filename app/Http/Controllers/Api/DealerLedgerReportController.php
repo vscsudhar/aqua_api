@@ -127,6 +127,7 @@ class DealerLedgerReportController extends Controller
         $now = Carbon::now('Asia/Kolkata');
         $year = (int) $request->input('year', $now->year);
         $month = (int) $request->input('month', $now->month);
+        $detailed = $request->boolean('detailed', false);
 
         $dealerIds = $request->input('dealer_ids');
         if (is_string($dealerIds)) {
@@ -137,7 +138,7 @@ class DealerLedgerReportController extends Controller
 
         $caneProductId = $request->filled('cane_product_id') ? (int) $request->input('cane_product_id') : null;
 
-        return $this->reportService->exportPdf($year, $month, $dealerIds, $caneProductId);
+        return $this->reportService->exportPdf($year, $month, $dealerIds, $caneProductId, $detailed);
     }
 
     /**

@@ -71,6 +71,18 @@ class DealerPayment extends Model
         return $this->belongsTo(User::class, 'updated_by');
     }
 
+    public function details(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DealerPaymentDetail::class, 'dealer_payment_id');
+    }
+
+    public function isSplit(): bool
+    {
+        return strtolower($this->payment_method ?? '') === 'split' ||
+               strtolower($this->payment_mode ?? '') === 'split' ||
+               $this->details()->count() > 1;
+    }
+
     public function ledgerEntry(): HasOne
     {
         return $this->hasOne(DealerLedgerEntry::class, 'reference_id')
@@ -91,7 +103,7 @@ class DealerPayment extends Model
         $entryDate = $this->payment_date ? $this->payment_date->toDateString() : Carbon::today('Asia/Kolkata')->toDateString();
         $amount = (float) $this->amount;
         $dealer = $this->dealer;
-        $method = strtoupper($this->payment_method ?? 'CASH');
+        $method = $this->isSplit() ? 'SPLIT' : strtoupper($this->payment_method ?? 'CASH');
 
         $narration = "Collection: {$this->payment_no} via {$method}".($this->reference_no ? " (Ref: {$this->reference_no})" : '');
         if ($dealer) {

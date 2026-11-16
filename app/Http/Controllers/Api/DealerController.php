@@ -197,18 +197,22 @@ class DealerController extends Controller
         // Base opening balance of dealer
         $baseOpening = (float) $dealer->opening_balance;
 
-        // Calculate opening balance at start of range
+        // Calculate opening balance at start of range (excluding invoice module entries)
         $effectiveOpeningBalance = $baseOpening;
         if ($startDate) {
             $priorDiff = DealerLedgerEntry::where('dealer_id', $id)
                 ->where('entry_date', '<', $startDate)
                 ->where('entry_type', '!=', 'opening_balance')
+                ->where('narration', 'not like', '%Invoice%')
+                ->where('narration', 'not like', '%Inv %')
                 ->selectRaw('COALESCE(SUM(debit), 0) - COALESCE(SUM(credit), 0) as balance_diff')
                 ->value('balance_diff') ?? 0;
             $effectiveOpeningBalance += (float) $priorDiff;
         }
 
-        $query = DealerLedgerEntry::where('dealer_id', $id);
+        $query = DealerLedgerEntry::where('dealer_id', $id)
+            ->where('narration', 'not like', '%Invoice%')
+            ->where('narration', 'not like', '%Inv %');
         if ($startDate) {
             $query->where('entry_date', '>=', $startDate);
         }

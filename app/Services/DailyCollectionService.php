@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Dealer;
 use App\Models\DealerPayment;
+use App\Models\DealerPaymentDetail;
 use App\Models\DealerSupply;
 use App\Models\DealerSupplyItem;
 use App\Models\Product;
@@ -227,6 +228,27 @@ class DailyCollectionService
                     }
                 }
 
+                if (!empty($data['payment_splits'])) {
+                    $splitsTotal = 0.0;
+                    foreach ($data['payment_splits'] as $s) {
+                        $sAmt = (float) ($s['amount'] ?? 0);
+                        if ($sAmt <= 0) {
+                            throw ValidationException::withMessages([
+                                'payment_splits' => ['Every split payment row must have an amount greater than zero.'],
+                            ]);
+                        }
+                        $splitsTotal += $sAmt;
+                    }
+                    if (abs($splitsTotal - $payAmount) > 0.01) {
+                        throw ValidationException::withMessages([
+                            'payment_splits' => ["Total of split payments (₹" . number_format($splitsTotal, 2) . ") must exactly match the collection amount (₹" . number_format($payAmount, 2) . ")."],
+                        ]);
+                    }
+                }
+
+                $paymentMethod = !empty($data['payment_splits']) ? 'split' : ($data['payment_method'] ?? 'cash');
+                $paymentMode = $paymentMethod;
+
                 $payment = DealerPayment::create($this->filterAttributesForTable('dealer_payments', [
                     'company_id' => $companyId,
                     'payment_no' => $paymentNo,
@@ -235,8 +257,8 @@ class DailyCollectionService
                     'dealer_supply_id' => $supply->id,
                     'payment_date' => $payDate,
                     'amount' => $payAmount,
-                    'payment_method' => $data['payment_method'] ?? 'cash',
-                    'payment_mode' => $data['payment_method'] ?? 'cash',
+                    'payment_method' => $paymentMethod,
+                    'payment_mode' => $paymentMode,
                     'reference_no' => $data['payment_reference'] ?? null,
                     'status' => 'completed',
                     'remarks' => $data['payment_notes'] ?? null,
@@ -245,6 +267,28 @@ class DailyCollectionService
                     'collected_by' => $user?->id,
                     'created_by' => $user?->id,
                 ]));
+
+                if (!empty($data['payment_splits'])) {
+                    foreach ($data['payment_splits'] as $split) {
+                        DealerPaymentDetail::create([
+                            'company_id' => $companyId,
+                            'dealer_payment_id' => $payment->id,
+                            'payment_mode' => strtolower(trim($split['payment_mode'] ?? 'cash')),
+                            'amount' => (float) $split['amount'],
+                            'reference_no' => $split['reference_no'] ?? null,
+                            'notes' => $split['notes'] ?? null,
+                        ]);
+                    }
+                } else {
+                    DealerPaymentDetail::create([
+                        'company_id' => $companyId,
+                        'dealer_payment_id' => $payment->id,
+                        'payment_mode' => strtolower(trim($paymentMethod)),
+                        'amount' => $payAmount,
+                        'reference_no' => $data['payment_reference'] ?? null,
+                        'notes' => $data['payment_notes'] ?? null,
+                    ]);
+                }
 
                 // Synchronize payment credit ledger entry
                 $payment->syncLedgerEntry($user?->id);
@@ -432,6 +476,24 @@ class DailyCollectionService
             ? Carbon::parse($data['payment_date'], 'Asia/Kolkata')->toDateString()
             : Carbon::today('Asia/Kolkata')->toDateString();
 
+        if (!empty($data['payment_splits'])) {
+            $splitsTotal = 0.0;
+            foreach ($data['payment_splits'] as $s) {
+                $sAmt = (float) ($s['amount'] ?? 0);
+                if ($sAmt <= 0) {
+                    throw ValidationException::withMessages([
+                        'payment_splits' => ['Every split payment row must have an amount greater than zero.'],
+                    ]);
+                }
+                $splitsTotal += $sAmt;
+            }
+            if (abs($splitsTotal - $amount) > 0.01) {
+                throw ValidationException::withMessages([
+                    'payment_splits' => ["Total of split payments (₹" . number_format($splitsTotal, 2) . ") must exactly match the collection amount (₹" . number_format($amount, 2) . ")."],
+                ]);
+            }
+        }
+
         return DB::transaction(function () use ($dealer, $amount, $paymentDate, $data, $user) {
             $companyId = $dealer->company_id ?? $user?->company_id ?? Auth::user()?->company_id;
             // Generate unique Payment No — serialized with FOR UPDATE lock to prevent race conditions
@@ -466,6 +528,9 @@ class DailyCollectionService
                 $includeInLedger = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
             }
 
+            $paymentMethod = !empty($data['payment_splits']) ? 'split' : ($data['payment_method'] ?? 'cash');
+            $paymentMode = $paymentMethod;
+
             $payment = DealerPayment::create($this->filterAttributesForTable('dealer_payments', [
                 'company_id' => $companyId,
                 'payment_no' => $paymentNo,
@@ -474,8 +539,8 @@ class DailyCollectionService
                 'dealer_supply_id' => $data['dealer_supply_id'] ?? null,
                 'payment_date' => $paymentDate,
                 'amount' => $amount,
-                'payment_method' => $data['payment_method'] ?? 'cash',
-                'payment_mode' => $data['payment_method'] ?? 'cash',
+                'payment_method' => $paymentMethod,
+                'payment_mode' => $paymentMode,
                 'reference_no' => $data['reference_no'] ?? null,
                 'status' => 'completed',
                 'remarks' => $data['notes'] ?? ($data['remarks'] ?? null),
@@ -484,6 +549,28 @@ class DailyCollectionService
                 'collected_by' => $user?->id,
                 'created_by' => $user?->id,
             ]));
+
+            if (!empty($data['payment_splits'])) {
+                foreach ($data['payment_splits'] as $split) {
+                    DealerPaymentDetail::create([
+                        'company_id' => $companyId,
+                        'dealer_payment_id' => $payment->id,
+                        'payment_mode' => strtolower(trim($split['payment_mode'] ?? 'cash')),
+                        'amount' => (float) $split['amount'],
+                        'reference_no' => $split['reference_no'] ?? null,
+                        'notes' => $split['notes'] ?? null,
+                    ]);
+                }
+            } else {
+                DealerPaymentDetail::create([
+                    'company_id' => $companyId,
+                    'dealer_payment_id' => $payment->id,
+                    'payment_mode' => strtolower(trim($paymentMethod)),
+                    'amount' => $amount,
+                    'reference_no' => $data['reference_no'] ?? null,
+                    'notes' => $data['notes'] ?? null,
+                ]);
+            }
 
             // If linked to a supply, update that supply's payment financials
             if (! empty($data['dealer_supply_id'])) {
@@ -496,7 +583,7 @@ class DailyCollectionService
             // Sync ledger immediately
             $payment->syncLedgerEntry($user?->id);
 
-            return $payment->load(['dealer', 'supply']);
+            return $payment->load(['dealer', 'supply', 'details']);
         });
     }
 
@@ -509,11 +596,7 @@ class DailyCollectionService
             if (! empty($data['payment_date'])) {
                 $payment->payment_date = Carbon::parse($data['payment_date'], 'Asia/Kolkata')->toDateString();
             }
-            if (isset($data['payment_method']) || isset($data['payment_mode'])) {
-                $method = $data['payment_method'] ?? $data['payment_mode'];
-                $payment->payment_method = $method;
-                $payment->payment_mode = $method;
-            }
+
             if (array_key_exists('reference_no', $data)) {
                 $payment->reference_no = $data['reference_no'];
             }
@@ -523,12 +606,91 @@ class DailyCollectionService
             if (array_key_exists('notes', $data)) {
                 $payment->notes = $data['notes'];
             }
-            if (isset($data['amount']) && (float) $data['amount'] > 0) {
-                $payment->amount = (float) $data['amount'];
-            }
             if (array_key_exists('include_in_ledger_amount', $data)) {
                 $payment->include_in_ledger_amount = filter_var($data['include_in_ledger_amount'], FILTER_VALIDATE_BOOLEAN);
             }
+
+            if (isset($data['payment_splits']) && is_array($data['payment_splits'])) {
+                $splits = $data['payment_splits'];
+                if (!empty($splits)) {
+                    $targetAmount = isset($data['amount']) && (float) $data['amount'] > 0
+                        ? (float) $data['amount']
+                        : (float) $payment->amount;
+
+                    $splitsTotal = 0.0;
+                    foreach ($splits as $s) {
+                        $sAmt = (float) ($s['amount'] ?? 0);
+                        if ($sAmt <= 0) {
+                            throw ValidationException::withMessages([
+                                'payment_splits' => ['Every split payment row must have an amount greater than zero.'],
+                            ]);
+                        }
+                        $splitsTotal += $sAmt;
+                    }
+
+                    if (abs($splitsTotal - $targetAmount) > 0.01) {
+                        throw ValidationException::withMessages([
+                            'payment_splits' => ["Total of split payments (₹" . number_format($splitsTotal, 2) . ") must exactly match the collection amount (₹" . number_format($targetAmount, 2) . ")."],
+                        ]);
+                    }
+
+                    $payment->amount = $targetAmount;
+                    $payment->payment_method = 'split';
+                    $payment->payment_mode = 'split';
+
+                    $payment->details()->forceDelete();
+
+                    foreach ($splits as $split) {
+                        DealerPaymentDetail::create([
+                            'company_id' => $payment->company_id,
+                            'dealer_payment_id' => $payment->id,
+                            'payment_mode' => strtolower(trim($split['payment_mode'] ?? 'cash')),
+                            'amount' => (float) $split['amount'],
+                            'reference_no' => $split['reference_no'] ?? null,
+                            'notes' => $split['notes'] ?? null,
+                        ]);
+                    }
+                } else {
+                    $payment->details()->forceDelete();
+                    $method = $data['payment_method'] ?? $data['payment_mode'] ?? 'cash';
+                    if (isset($data['amount']) && (float) $data['amount'] > 0) {
+                        $payment->amount = (float) $data['amount'];
+                    }
+                    $payment->payment_method = $method;
+                    $payment->payment_mode = $method;
+
+                    DealerPaymentDetail::create([
+                        'company_id' => $payment->company_id,
+                        'dealer_payment_id' => $payment->id,
+                        'payment_mode' => strtolower(trim($method)),
+                        'amount' => (float) $payment->amount,
+                        'reference_no' => $payment->reference_no,
+                        'notes' => $payment->notes,
+                    ]);
+                }
+            } elseif (isset($data['amount']) || isset($data['payment_method']) || isset($data['payment_mode'])) {
+                if (isset($data['payment_method']) || isset($data['payment_mode'])) {
+                    $method = $data['payment_method'] ?? $data['payment_mode'];
+                    $payment->payment_method = $method;
+                    $payment->payment_mode = $method;
+                }
+                if (isset($data['amount']) && (float) $data['amount'] > 0) {
+                    $payment->amount = (float) $data['amount'];
+                }
+
+                if (!$payment->isSplit()) {
+                    $payment->details()->forceDelete();
+                    DealerPaymentDetail::create([
+                        'company_id' => $payment->company_id,
+                        'dealer_payment_id' => $payment->id,
+                        'payment_mode' => strtolower(trim($payment->payment_method ?? 'cash')),
+                        'amount' => (float) $payment->amount,
+                        'reference_no' => $payment->reference_no,
+                        'notes' => $payment->notes,
+                    ]);
+                }
+            }
+
             $payment->updated_by = $user?->id;
             $payment->save();
 
@@ -541,7 +703,7 @@ class DailyCollectionService
                 $supply?->recalculateFinancials(true);
             }
 
-            return $payment->load(['dealer', 'supply']);
+            return $payment->load(['dealer', 'supply', 'details']);
         });
     }
 
@@ -551,6 +713,9 @@ class DailyCollectionService
     public function deletePayment(DealerPayment $payment, ?User $user = null): bool
     {
         return DB::transaction(function () use ($payment, $user) {
+            // Delete linked details
+            $payment->details()->delete();
+
             // Delete ledger entry
             $payment->ledgerEntry()?->delete();
 
@@ -597,15 +762,56 @@ class DailyCollectionService
         // 2. Collection metrics for date
         $payments = DealerPayment::whereDate('payment_date', $date)
             ->where('status', 'completed')
+            ->with('details')
             ->get();
 
         $totalCollectionsAmount = (float) $payments->sum('amount');
         $totalCollectionsCount = $payments->count();
 
-        $cashAmount = (float) $payments->where('payment_method', 'cash')->sum('amount');
-        $upiAmount = (float) $payments->where('payment_method', 'upi')->sum('amount');
-        $chequeAmount = (float) $payments->where('payment_method', 'cheque')->sum('amount');
-        $bankTransferAmount = (float) $payments->whereIn('payment_method', ['bank_transfer', 'neft'])->sum('amount');
+        $cashAmount = 0.0;
+        $upiAmount = 0.0;
+        $bankTransferAmount = 0.0;
+        $cardAmount = 0.0;
+        $chequeAmount = 0.0;
+        $otherAmount = 0.0;
+
+        foreach ($payments as $payment) {
+            if ($payment->details && $payment->details->isNotEmpty()) {
+                foreach ($payment->details as $d) {
+                    $mode = strtolower(trim($d->payment_mode ?? ''));
+                    $amt = (float) $d->amount;
+                    if ($mode === 'cash') {
+                        $cashAmount += $amt;
+                    } elseif ($mode === 'upi') {
+                        $upiAmount += $amt;
+                    } elseif (in_array($mode, ['bank_transfer', 'neft', 'bank transfer', 'bank', 'transfer'])) {
+                        $bankTransferAmount += $amt;
+                    } elseif ($mode === 'card') {
+                        $cardAmount += $amt;
+                    } elseif ($mode === 'cheque') {
+                        $chequeAmount += $amt;
+                    } else {
+                        $otherAmount += $amt;
+                    }
+                }
+            } else {
+                $method = strtolower(trim($payment->payment_method ?? $payment->payment_mode ?? 'cash'));
+                $amt = (float) $payment->amount;
+                if ($method === 'cash') {
+                    $cashAmount += $amt;
+                } elseif ($method === 'upi') {
+                    $upiAmount += $amt;
+                } elseif (in_array($method, ['bank_transfer', 'neft', 'bank transfer', 'bank', 'transfer'])) {
+                    $bankTransferAmount += $amt;
+                } elseif ($method === 'card') {
+                    $cardAmount += $amt;
+                } elseif ($method === 'cheque') {
+                    $chequeAmount += $amt;
+                } else {
+                    $otherAmount += $amt;
+                }
+            }
+        }
 
         // 3. Active dealers served
         $supplyDealerIds = $supplies->pluck('dealer_id')->toArray();
@@ -632,8 +838,10 @@ class DailyCollectionService
                 'by_method' => [
                     'cash' => round($cashAmount, 2),
                     'upi' => round($upiAmount, 2),
-                    'cheque' => round($chequeAmount, 2),
                     'bank_transfer' => round($bankTransferAmount, 2),
+                    'card' => round($cardAmount, 2),
+                    'cheque' => round($chequeAmount, 2),
+                    'other' => round($otherAmount, 2),
                 ],
             ],
             'dealers_served_count' => $dealersServedCount,

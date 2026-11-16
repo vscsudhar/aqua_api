@@ -463,29 +463,6 @@ class BillingService
         }
 
         return DB::transaction(function () use ($invoice, $reason, $user) {
-            // If it was finalized and standalone (not linked to an existing supply) and dealer linked:
-            // Reverse the debit on dealer ledger
-            if ($invoice->status === 'finalized' && empty($invoice->dealer_supply_id) && ! empty($invoice->dealer_id)) {
-                $dealer = $invoice->dealer;
-                if ($dealer) {
-                    $runningBalance = $dealer->calculateOutstandingBalance();
-                    $newBalance = round($runningBalance - (float) $invoice->grand_total, 2);
-
-                    DealerLedgerEntry::create([
-                        'dealer_id' => $dealer->id,
-                        'entry_date' => now()->toDateString(),
-                        'entry_type' => 'adjustment',
-                        'reference_id' => $invoice->id,
-                        'reference_no' => $invoice->invoice_no.'-CAN',
-                        'debit' => 0.00,
-                        'credit' => (float) $invoice->grand_total,
-                        'running_balance' => $newBalance,
-                        'narration' => "Cancelled Invoice {$invoice->invoice_no}: {$reason}",
-                        'created_by' => $user?->id,
-                    ]);
-                }
-            }
-
             $invoice->status = 'cancelled';
             $invoice->cancellation_reason = $reason;
             $invoice->cancelled_at = now();
@@ -538,26 +515,6 @@ class BillingService
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $user?->id,
             ]);
-
-            // Sync credit to dealer ledger
-            if ($invoice->dealer_id) {
-                $dealer = $invoice->dealer;
-                $runningBalance = $dealer->calculateOutstandingBalance();
-                $newBalance = round($runningBalance - $totalAmount, 2);
-
-                DealerLedgerEntry::create([
-                    'dealer_id' => $dealer->id,
-                    'entry_date' => $date,
-                    'entry_type' => 'adjustment',
-                    'reference_id' => $creditNote->id,
-                    'reference_no' => $creditNote->credit_note_no,
-                    'debit' => 0.00,
-                    'credit' => $totalAmount,
-                    'running_balance' => $newBalance,
-                    'narration' => "Credit Note {$creditNote->credit_note_no} for Inv {$invoice->invoice_no}: {$creditNote->reason}",
-                    'created_by' => $user?->id,
-                ]);
-            }
 
             return $creditNote;
         });
@@ -615,28 +572,6 @@ class BillingService
                 $invoice->payment_status = 'unpaid';
             }
             $invoice->save();
-
-            // Sync credit to dealer ledger if standalone dealer invoice and finalized
-            if (! empty($invoice->dealer_id) && empty($invoice->dealer_supply_id) && $invoice->status === 'finalized') {
-                $dealer = $invoice->dealer;
-                if ($dealer) {
-                    $runningBalance = $dealer->calculateOutstandingBalance();
-                    $newBalance = round($runningBalance - $amount, 2);
-
-                    DealerLedgerEntry::create([
-                        'dealer_id' => $dealer->id,
-                        'entry_date' => $paymentDate,
-                        'entry_type' => 'payment',
-                        'reference_id' => $payment->id,
-                        'reference_no' => $payment->payment_no,
-                        'debit' => 0.00,
-                        'credit' => $amount,
-                        'running_balance' => $newBalance,
-                        'narration' => "Payment for Tax Invoice {$invoice->invoice_no} ({$payment->payment_method})",
-                        'created_by' => $user?->id,
-                    ]);
-                }
-            }
 
             return $payment;
         });
@@ -760,44 +695,12 @@ class BillingService
     /**
      * Synchronize finalized invoice with dealer ledger if standalone sale.
      * Prevents double counting if derived from an existing dealer supply.
+     * Note: Invoices are strictly separated from dealer accounting and do NOT create dealer ledger entries.
      */
     protected function syncFinalizedLedgerEntry(Invoice $invoice, ?User $user = null): void
     {
-        // If invoice is derived from an existing dealer supply:
-        // Do NOT duplicate ledger debit! The supply transaction already debited dealer ledger.
-        if (! empty($invoice->dealer_supply_id)) {
-            return;
-        }
-
-        // If it's a direct standalone invoice and linked to a dealer:
-        if (! empty($invoice->dealer_id)) {
-            $dealer = $invoice->dealer;
-            if ($dealer) {
-                // Check if already has ledger entry
-                $exists = DealerLedgerEntry::where('dealer_id', $dealer->id)
-                    ->where('entry_type', 'supply')
-                    ->where('reference_no', $invoice->invoice_no)
-                    ->exists();
-
-                if (! $exists) {
-                    $runningBalance = $dealer->calculateOutstandingBalance();
-                    $newBalance = round($runningBalance + (float) $invoice->grand_total, 2);
-
-                    DealerLedgerEntry::create([
-                        'dealer_id' => $dealer->id,
-                        'entry_date' => $invoice->invoice_date->toDateString(),
-                        'entry_type' => 'supply',
-                        'reference_id' => $invoice->id,
-                        'reference_no' => $invoice->invoice_no,
-                        'debit' => (float) $invoice->grand_total,
-                        'credit' => 0.00,
-                        'running_balance' => $newBalance,
-                        'narration' => "Tax Invoice {$invoice->invoice_no} ({$invoice->customer_name})",
-                        'created_by' => $user?->id,
-                    ]);
-                }
-            }
-        }
+        // Invoices must NOT affect dealer accounting, dealer statement, or dealer ledger
+        return;
     }
 
     /**
