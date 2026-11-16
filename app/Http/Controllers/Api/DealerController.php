@@ -319,8 +319,8 @@ class DealerController extends Controller
             }
         }
 
-        // Payments breakdown
-        $paymentsQuery = \App\Models\DealerPayment::where('dealer_id', $id);
+        // Payments breakdown (P1 and P2 include filling/refill payments only, strictly excluding bottle amounts)
+        $paymentsQuery = \App\Models\DealerPayment::with(['supply.items.product'])->where('dealer_id', $id);
         if ($startDate) {
             $paymentsQuery->where('payment_date', '>=', $startDate);
         }
@@ -335,13 +335,16 @@ class DealerController extends Controller
         foreach ($dealerPayments as $pay) {
             $amt = (float) $pay->amount;
             $payDay = (int) \Carbon\Carbon::parse($pay->payment_date)->day;
+            $fillingAmt = $reportService->getFillingPaymentAmount($pay);
+
             if (isset($pay->include_in_ledger_amount) && ! $pay->include_in_ledger_amount) {
                 $othersPayments += $amt;
             }
+
             if ($payDay <= 15) {
-                $p1Payments += $amt;
+                $p1Payments += $fillingAmt;
             } else {
-                $p2Payments += $amt;
+                $p2Payments += $fillingAmt;
             }
         }
 

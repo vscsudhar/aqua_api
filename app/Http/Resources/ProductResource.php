@@ -29,6 +29,7 @@ class ProductResource extends JsonResource
             'min_stock_level' => $this->min_stock_level !== null ? (float) $this->min_stock_level : null,
             'is_low_stock' => $this->isLowStock(),
             'is_active' => (bool) $this->is_active,
+            'for_invoice' => (bool) ($this->for_invoice ?? false),
             'is_referenced' => $this->isReferencedInTransactions(),
             'category' => new CategoryResource($this->whenLoaded('category')),
             'unit' => new UnitResource($this->whenLoaded('unitRel')),

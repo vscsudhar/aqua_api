@@ -15,7 +15,7 @@
     @if(!empty($isHtmlView))
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     @endif
-    <title>{{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'Invoice' : 'Tax Invoice' }} - {{ $invoice->invoice_no }}</title>
+    <title>{{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'Estimate' : 'Tax Invoice' }} - {{ $invoice->invoice_no }}</title>
     <style>
         /* Embedded Unicode fonts supporting Indian Rupee symbol (₹) */
         @font-face {
@@ -302,7 +302,10 @@
                 <tr>
                     <!-- Left: GSTIN (bold & font +2) & optional FSSAI NO -->
                     <td style="width: 50%; vertical-align: bottom; text-align: left;">
-                        @if(!empty(trim($settings->gstin ?? '')))
+                        @php
+                            $isWithoutGst = method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : (($invoice->invoice_type ?? '') === 'without_gst');
+                        @endphp
+                        @if(!$isWithoutGst && !empty(trim($settings->gstin ?? '')))
                             <div style="font-size: 10.5pt; font-weight: bold; color: #0f172a;"><strong>GSTIN :</strong> {{ $settings->gstin }}</div>
                         @endif
                         @if(!empty(trim($settings->fssai_no ?? '')) && strtolower(trim($settings->fssai_no ?? '')) !== 'null')
@@ -323,9 +326,9 @@
             </table>
         </div>
 
-        <!-- TAX INVOICE / INVOICE STRIP -->
+        <!-- TAX INVOICE / ESTIMATE STRIP -->
         <div style="text-align: center; font-size: 11pt; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: 1.2px; padding: 5pt 0; border-top: 1pt solid #1e293b; border-bottom: 1pt solid #1e293b; background: #ffffff;">
-            {{ (method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : ($invoice->invoice_type ?? '') === 'without_gst') ? 'INVOICE' : 'TAX INVOICE' }}
+            {{ $isWithoutGst ? 'ESTIMATE' : 'TAX INVOICE' }}
         </div>
 
         <!-- 2-COLUMN BOX: Customer Details (Left) | Invoice Metadata (Right) -->
@@ -345,7 +348,7 @@
                     @if($invoice->customer_phone)
                         <div><strong>Phone :</strong> {{ $invoice->customer_phone }}</div>
                     @endif
-                    @if($invoice->customer_gstin)
+                    @if(!$isWithoutGst && $invoice->customer_gstin)
                         <div style="margin-top: 2pt; font-size: 9.5pt; font-weight: bold;"><strong>GSTIN :</strong> {{ $invoice->customer_gstin }}</div>
                     @endif
                 </td>
@@ -354,38 +357,19 @@
                 <td style="width: 46%; vertical-align: top; padding: 8pt 14pt; font-size: 8.8pt; line-height: 1.5;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 8.8pt;">
                         <tr>
-                            <td style="width: 38%; padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice No</td>
+                            <td style="width: 38%; padding: 2pt 0; font-weight: bold; color: #0f172a;">{{ $isWithoutGst ? 'Estimate No' : 'Invoice No' }}</td>
                             <td style="width: 62%; padding: 2pt 0; font-weight: bold; color: #0f172a;">: {{ $invoice->invoice_no }}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Invoice Date</td>
+                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">{{ $isWithoutGst ? 'Estimate Date' : 'Invoice Date' }}</td>
                             <td style="padding: 2pt 0;">: {{ \Carbon\Carbon::parse($invoice->invoice_date)->format('d M Y') }}</td>
                         </tr>
-                        @php
-                            $paidAmt = (float) ($invoice->paid_amount ?? 0);
-                            $grandTot = (float) ($invoice->grand_total ?? 0);
-                            $balDue = max(0.0, (float) ($invoice->balance_due ?? ($grandTot - $paidAmt)));
-                            if ($paidAmt <= 0) {
-                                $payStatusText = 'UNPAID';
-                                $payStatusColor = '#dc2626';
-                                $payStatusBg = '#fef2f2';
-                                $payStatusBorder = '#fecaca';
-                            } elseif ($paidAmt < $grandTot) {
-                                $payStatusText = 'PARTIALLY PAID';
-                                $payStatusColor = '#d97706';
-                                $payStatusBg = '#fffbeb';
-                                $payStatusBorder = '#fde68a';
-                            } else {
-                                $payStatusText = 'FULLY PAID';
-                                $payStatusColor = '#16a34a';
-                                $payStatusBg = '#f0fdf4';
-                                $payStatusBorder = '#bbf7d0';
-                            }
-                        @endphp
+                        @if($invoice->due_date)
                         <tr>
-                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Payment Status</td>
-                            <td style="padding: 2pt 0; font-weight: bold; color: {{ $payStatusColor }};">: {{ $payStatusText }}</td>
+                            <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Due Date</td>
+                            <td style="padding: 2pt 0;">: {{ \Carbon\Carbon::parse($invoice->due_date)->format('d M Y') }}</td>
                         </tr>
+                        @endif
                         <tr>
                             <td style="padding: 2pt 0; font-weight: bold; color: #0f172a;">Payment Mode</td>
                             <td style="padding: 2pt 0; text-transform: uppercase;">: {{ $invoice->payment_status === 'paid' ? 'CASH' : ($invoice->payment_mode ?? 'CASH') }}</td>
@@ -401,28 +385,30 @@
         @endif
         @php
             $isWithoutGst = method_exists($invoice, 'isWithoutGst') ? $invoice->isWithoutGst() : (($invoice->invoice_type ?? '') === 'without_gst');
+            $isIgst = !$isWithoutGst && (bool) $invoice->is_interstate;
+            $isCgstSgst = !$isWithoutGst && !$isIgst;
         @endphp
         <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b; margin-top: {{ $isWithoutGst ? '10pt' : '0' }}; @if($isWithoutGst) border-top: 1pt solid #1e293b; @endif">
             <thead>
                 <tr style="border-bottom: 1pt solid #1e293b; background: #ffffff;">
                     <th style="width: 5%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
-                    <th style="width: {{ $isWithoutGst ? '38%' : '31%' }}; padding: 5pt 4pt; font-size: 7.2pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Prod Name</th>
+                    <th style="width: {{ $isWithoutGst ? '38%' : ($isIgst ? '30%' : '26%') }}; padding: 5pt 4pt; font-size: 7.2pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Prod Name</th>
                     <th style="width: 10%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
                     <th style="width: 7%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
                     <th style="width: 7%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
                     <th style="width: {{ $isWithoutGst ? '12%' : '9%' }}; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
                     <th style="width: {{ $isWithoutGst ? '11%' : '11%' }}; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
-                    @if(!$isWithoutGst)
-                    <th style="width: 9%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Tax Amount</th>
+                    @if($isIgst)
+                    <th style="width: 10%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">IGST</th>
+                    @elseif($isCgstSgst)
+                    <th style="width: 9%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">CGST</th>
+                    <th style="width: 9%; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">SGST</th>
                     @endif
                     <th style="width: {{ $isWithoutGst ? '10%' : '11%' }}; padding: 5pt 3pt; font-size: 7.2pt; font-weight: bold; text-align: right;">Total Amount</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach($invoice->items as $idx => $item)
-                @php
-                    $itemTax = (float)($item->cgst_amount + $item->sgst_amount + $item->igst_amount);
-                @endphp
                 <tr style="border-bottom: 0.5pt solid #cbd5e1; font-size: 7.2pt;">
                     <td style="padding: 4.5pt 3pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $idx + 1 }}</td>
                     <td style="padding: 4.5pt 4pt; text-align: left; border-right: 1pt solid #1e293b;">
@@ -436,8 +422,11 @@
                     <td style="padding: 4.5pt 3pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->unit ?? 'Pcs' }}</td>
                     <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->unit_price) }}</td>
                     <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->taxable_amount) }}</td>
-                    @if(!$isWithoutGst)
-                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($itemTax) }}</td>
+                    @if($isIgst)
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->igst_amount) }}</td>
+                    @elseif($isCgstSgst)
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->cgst_amount) }}</td>
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($item->sgst_amount) }}</td>
                     @endif
                     <td style="padding: 4.5pt 3pt; text-align: right; font-weight: bold;">{{ formatInvoiceAmount($item->line_total) }}</td>
                 </tr>
@@ -457,7 +446,10 @@
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
-                    @if(!$isWithoutGst)
+                    @if($isIgst)
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
+                    @elseif($isCgstSgst)
+                    <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="border-right: 1pt solid #1e293b;">&nbsp;</td>
                     @endif
                     <td>&nbsp;</td>
@@ -467,7 +459,6 @@
                 <!-- Summary Row inside Items Table -->
                 @php
                     $totalQty = $invoice->items->sum('quantity');
-                    $totalTax = (float)($invoice->tax_total ?? ($invoice->cgst_amount + $invoice->sgst_amount + $invoice->igst_amount));
                     $totalLineSum = $invoice->items->sum('line_total');
                 @endphp
                 <tr style="border-top: 1pt solid #1e293b; font-size: 7.2pt; font-weight: bold;">
@@ -478,8 +469,11 @@
                     <td style="padding: 4.5pt 3pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="padding: 4.5pt 3pt; border-right: 1pt solid #1e293b;">&nbsp;</td>
                     <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
-                    @if(!$isWithoutGst)
-                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($totalTax) }}</td>
+                    @if($isIgst)
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->igst_amount) }}</td>
+                    @elseif($isCgstSgst)
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->cgst_amount) }}</td>
+                    <td style="padding: 4.5pt 3pt; text-align: right; border-right: 1pt solid #1e293b;">{{ formatInvoiceAmount($invoice->sgst_amount) }}</td>
                     @endif
                     <td style="padding: 4.5pt 3pt; text-align: right;">{{ formatInvoiceAmount($totalLineSum) }}</td>
                 </tr>
@@ -565,18 +559,32 @@
                             <td style="color: #334155; padding: 2pt 0; font-weight: 600;">Taxable Amount:</td>
                             <td style="text-align: right; font-weight: 600; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->taxable_amount) }}</td>
                         </tr>
-                        @if($invoice->is_interstate)
+                        @if($isIgst)
+                        @php
+                            $igstPct = (float)($invoice->taxable_amount > 0 ? round(($invoice->igst_amount / $invoice->taxable_amount) * 100, 1) : 0);
+                            if ($igstPct <= 0 && $invoice->items->count() > 0) {
+                                $igstPct = (float)($invoice->items->first()->igst_rate ?? $invoice->items->first()->tax_rate ?? 0);
+                            }
+                        @endphp
                         <tr>
-                            <td style="color: #334155; padding: 2pt 0;">IGST:</td>
+                            <td style="color: #334155; padding: 2pt 0;">IGST ({{ $igstPct == round($igstPct, 0) ? number_format($igstPct, 0) : number_format($igstPct, 1) }}%):</td>
                             <td style="text-align: right; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->igst_amount) }}</td>
                         </tr>
                         @else
+                        @php
+                            $totalGstPct = (float)($invoice->taxable_amount > 0 ? round((($invoice->cgst_amount + $invoice->sgst_amount) / $invoice->taxable_amount) * 100, 1) : 0);
+                            if ($totalGstPct <= 0 && $invoice->items->count() > 0) {
+                                $totalGstPct = (float)($invoice->items->first()->tax_rate ?? 0);
+                            }
+                            $cgstPct = round($totalGstPct / 2, 1);
+                            $sgstPct = round($totalGstPct / 2, 1);
+                        @endphp
                         <tr>
-                            <td style="color: #334155; padding: 2pt 0;">CGST:</td>
+                            <td style="color: #334155; padding: 2pt 0;">CGST ({{ $cgstPct == round($cgstPct, 0) ? number_format($cgstPct, 0) : number_format($cgstPct, 1) }}%):</td>
                             <td style="text-align: right; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->cgst_amount) }}</td>
                         </tr>
                         <tr>
-                            <td style="color: #334155; padding: 2pt 0;">SGST:</td>
+                            <td style="color: #334155; padding: 2pt 0;">SGST ({{ $sgstPct == round($sgstPct, 0) ? number_format($sgstPct, 0) : number_format($sgstPct, 1) }}%):</td>
                             <td style="text-align: right; padding: 2pt 0;">₹{{ formatInvoiceAmount($invoice->sgst_amount) }}</td>
                         </tr>
                         @endif
@@ -588,39 +596,13 @@
                         </tr>
                         @endif
                         <tr style="border-top: 0.5pt solid #cbd5e1;">
-                            <td style="font-size: 10.5pt; font-weight: bold; color: #0284c7; padding: 3pt 0;">Net Amount</td>
+                            <td style="font-size: 10.5pt; font-weight: bold; color: #0284c7; padding: 3pt 0;">Grand Total</td>
                             <td style="font-size: 13.5pt; font-weight: bold; text-align: right; color: #0284c7; padding: 3pt 0;">₹{{ formatInvoiceAmount($invoice->grand_total) }}</td>
                         </tr>
                     </table>
 
                     <div style="font-size: 8.5pt; color: #334155; margin-top: 5pt; line-height: 1.35;">
                         <strong>In Words :</strong> {{ $amountInWords }}
-                    </div>
-
-                    <!-- PAYMENT SUMMARY CARD (Clear Status, Amount Paid, Balance Due) -->
-                    <div style="margin-top: 7pt; border: 0.5pt solid {{ $payStatusBorder }}; background-color: {{ $payStatusBg }}; border-radius: 4pt; padding: 5pt 8pt;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 8.5pt;">
-                            <tr>
-                                <td style="padding: 2pt 0; color: #475569; font-weight: 600;">Payment Status:</td>
-                                <td style="text-align: right; padding: 2pt 0;">
-                                    <span style="font-weight: bold; font-size: 8.8pt; color: {{ $payStatusColor }}; letter-spacing: 0.5px;">
-                                        {{ $payStatusText }}
-                                    </span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 2pt 0; color: #475569;">Amount Paid:</td>
-                                <td style="text-align: right; font-weight: bold; color: #16a34a; padding: 2pt 0;">
-                                    ₹{{ formatInvoiceAmount($paidAmt) }}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 2pt 0; color: #475569;">Balance Due:</td>
-                                <td style="text-align: right; font-weight: bold; color: {{ $balDue > 0 ? '#dc2626' : '#16a34a' }}; padding: 2pt 0;">
-                                    ₹{{ formatInvoiceAmount($balDue) }}
-                                </td>
-                            </tr>
-                        </table>
                     </div>
                 </td>
             </tr>

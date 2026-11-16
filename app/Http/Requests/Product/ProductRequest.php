@@ -57,6 +57,7 @@ class ProductRequest extends FormRequest
             'min_stock_level' => $isRefill ? ['nullable', 'numeric'] : ['nullable', 'numeric', 'min:0'],
             'track_stock' => ['nullable', 'boolean'],
             'is_active' => ['nullable', 'boolean'],
+            'for_invoice' => ['nullable', 'boolean'],
         ];
     }
 }

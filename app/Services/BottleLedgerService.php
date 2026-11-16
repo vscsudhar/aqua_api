@@ -24,6 +24,10 @@ class BottleLedgerService
             ->where('company_id', $companyId)
             ->whereNull('deleted_at')
             ->where(function ($q) {
+                $q->whereNull('for_invoice')
+                    ->orWhere('for_invoice', false);
+            })
+            ->where(function ($q) {
                 $q->whereNull('product_type')
                     ->orWhereRaw('LOWER(TRIM(product_type)) != ?', ['refill']);
             })

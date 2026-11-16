@@ -92,6 +92,65 @@ class DealerLedgerReportService
     }
 
     /**
+     * Calculates the filling/refill payment portion of a dealer payment.
+     * Strictly excludes bottle purchase payments so P1 and P2 filling payments are accurate.
+     */
+    public function getFillingPaymentAmount(DealerPayment $payment): float
+    {
+        if (isset($payment->include_in_ledger_amount) && ! $payment->include_in_ledger_amount) {
+            return 0.0;
+        }
+
+        $amt = (float) $payment->amount;
+        if ($amt <= 0.0001) {
+            return 0.0;
+        }
+
+        // Check notes/remarks for explicit bottle allocation
+        $text = strtolower(trim(($payment->notes ?? '') . ' ' . ($payment->remarks ?? '')));
+        if (strpos($text, 'bottle') !== false && strpos($text, 'refill') === false) {
+            return 0.0;
+        }
+
+        // If payment is linked to a supply, check its item breakdown
+        if ($payment->dealer_supply_id && $payment->supply) {
+            $supply = $payment->supply;
+            $supplyRefillTotal = 0.0;
+            $supplyBottleTotal = 0.0;
+
+            foreach ($supply->items as $it) {
+                $p = $it->product;
+                $pName = $p?->name ?? $it->notes ?? '';
+                $pSku = $p?->sku ?? '';
+                $pUnit = $it->unit ?? $p?->unit ?? '';
+                $pType = $p?->product_type ?? null;
+                $lineTotal = (float) ($it->line_total ?? $it->total_amount ?? ($it->quantity * $it->unit_price));
+
+                if ($this->isRefillCaneProduct($it->product_id, $pName, $pSku, $pUnit, null, $pType)) {
+                    $supplyRefillTotal += $lineTotal;
+                } else {
+                    $supplyBottleTotal += $lineTotal;
+                }
+            }
+
+            // If the supply contains NO refill items at all, payment is purely for bottles
+            if ($supplyRefillTotal <= 0.001) {
+                return 0.0;
+            }
+
+            // If the supply contains only refill items, entire payment pays towards refill
+            if ($supplyBottleTotal <= 0.001) {
+                return min($amt, (float) $supply->total_amount);
+            }
+
+            // If the supply contains both refill and bottle items, cap at refill amount
+            return min($amt, $supplyRefillTotal);
+        }
+
+        return $amt;
+    }
+
+    /**
      * Generates complete monthly dealer ledger matrix data matching Excel layout.
      */
     public function generateMonthlyLedger(int $year, int $month, array $dealerIds = [], ?int $caneProductId = null): array
@@ -156,10 +215,16 @@ class DealerLedgerReportService
                 }
             }
 
-            $preCredit = (float) DealerPayment::where('dealer_id', $dealer->id)
+            $prePayments = DealerPayment::with(['supply.items.product'])
+                ->where('dealer_id', $dealer->id)
                 ->where('status', 'completed')
                 ->where('payment_date', '<', $startDate->toDateString())
-                ->sum('amount');
+                ->get();
+
+            $preCredit = 0.0;
+            foreach ($prePayments as $pp) {
+                $preCredit += $this->getFillingPaymentAmount($pp);
+            }
 
             $monthOpeningBalances[$dealer->id] = round($initialOp + $preDebit - $preCredit, 2);
         }
@@ -171,8 +236,9 @@ class DealerLedgerReportService
             ->whereBetween('supply_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
-        // Fetch all completed payments for the month
-        $payments = DealerPayment::whereIn('dealer_id', $dealers->pluck('id'))
+        // Fetch all completed payments for the month (with supply items to accurately exclude bottle purchase payments)
+        $payments = DealerPayment::with(['supply.items.product'])
+            ->whereIn('dealer_id', $dealers->pluck('id'))
             ->where('status', 'completed')
             ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
@@ -235,11 +301,11 @@ class DealerLedgerReportService
             }
         }
 
-        // Group payments by date and dealer
+        // Group payments by date and dealer - filling payment amounts only (strictly excluding bottle purchase amounts)
         $dailyPayments = [];
         foreach ($payments as $payment) {
-            // Check if explicitly excluded from ledger amount section
-            if (isset($payment->include_in_ledger_amount) && ! $payment->include_in_ledger_amount) {
+            $fillingAmt = $this->getFillingPaymentAmount($payment);
+            if ($fillingAmt <= 0.0001) {
                 continue;
             }
             $dateStr = Carbon::parse($payment->payment_date)->toDateString();
@@ -251,7 +317,7 @@ class DealerLedgerReportService
             if (! isset($dailyPayments[$dateStr][$dId])) {
                 $dailyPayments[$dateStr][$dId] = 0.0;
             }
-            $dailyPayments[$dateStr][$dId] += (float) $payment->amount;
+            $dailyPayments[$dateStr][$dId] += $fillingAmt;
         }
 
         // Build Matrix Calendar Dates
@@ -1015,28 +1081,37 @@ class DealerLedgerReportService
 
         $transactions = [];
 
-        // Add supplies
+        // Add supplies - filling/refill items only (strictly exclude bottle purchases from Dealer Ledger)
         foreach ($supplies as $supply) {
             $items = [];
             $totalCaneCount = 0;
+            $totalFillingAmount = 0.0;
             foreach ($supply->items as $it) {
                 $p = $it->product;
                 $pType = $p?->product_type ?? 'normal';
-                $isRefill = $pType === 'refill' || stripos($p?->name ?? '', 'refill') !== false;
-                if ($isRefill) {
-                    $totalCaneCount += (int) $it->quantity;
+                $isRefill = $this->isRefillCaneProduct($it->product_id, $p?->name ?? $it->notes, $p?->sku ?? '', $it->unit ?? '', null, $pType);
+                if (! $isRefill) {
+                    continue; // Exclude bottle items from Dealer Ledger!
                 }
+                $lineTot = (float) ($it->line_total ?? $it->total_amount ?? ($it->quantity * $it->unit_price));
+                $totalCaneCount += (int) $it->quantity;
+                $totalFillingAmount += $lineTot;
                 $items[] = [
                     'id' => $it->id,
                     'product_id' => $it->product_id,
                     'product_name' => $p?->name ?? 'Product #'.$it->product_id,
                     'product_type' => $pType,
-                    'is_refill' => $isRefill,
+                    'is_refill' => true,
                     'quantity' => (float) $it->quantity,
                     'unit' => $it->unit ?? 'Nos',
                     'unit_price' => (float) $it->unit_price,
-                    'line_total' => (float) $it->line_total,
+                    'line_total' => $lineTot,
                 ];
+            }
+
+            // If supply contained no refill/filling items, skip it from Dealer Ledger
+            if (empty($items)) {
+                continue;
             }
 
             $transactions[] = [
@@ -1044,12 +1119,12 @@ class DealerLedgerReportService
                 'source_table' => 'dealer_supplies',
                 'source_id' => $supply->id,
                 'transaction_no' => $supply->supply_no,
-                'transaction_type' => 'Dealer Supply',
+                'transaction_type' => 'Dealer Supply (Filling)',
                 'date' => $supply->supply_date->toDateString(),
                 'dealer_id' => $dealerId,
                 'dealer_name' => $dealer?->name ?? 'Dealer #'.$dealerId,
                 'dealer_code' => $dealer?->code ?? '',
-                'amount' => (float) $supply->total_amount,
+                'amount' => round($totalFillingAmount, 2),
                 'count' => $totalCaneCount,
                 'payment_status' => $supply->payment_status,
                 'status' => $supply->status,
@@ -1061,19 +1136,24 @@ class DealerLedgerReportService
             ];
         }
 
-        // Add payments
+        // Add payments - filling payments only (exclude bottle payments from Dealer Ledger)
         foreach ($payments as $payment) {
+            $fillingAmt = $this->getFillingPaymentAmount($payment);
+            if ($fillingAmt <= 0.0001) {
+                continue; // Exclude pure bottle purchase payments
+            }
+
             $transactions[] = [
                 'id' => 'payment-'.$payment->id,
                 'source_table' => 'dealer_payments',
                 'source_id' => $payment->id,
                 'transaction_no' => $payment->payment_no,
-                'transaction_type' => 'Payment Received',
+                'transaction_type' => 'Payment Received (Refill)',
                 'date' => $payment->payment_date ? $payment->payment_date->toDateString() : $dateStr,
                 'dealer_id' => $dealerId,
                 'dealer_name' => $dealer?->name ?? 'Dealer #'.$dealerId,
                 'dealer_code' => $dealer?->code ?? '',
-                'amount' => (float) $payment->amount,
+                'amount' => round($fillingAmt, 2),
                 'payment_method' => $payment->payment_method ?? 'cash',
                 'payment_mode' => $payment->payment_mode ?? $payment->payment_method ?? 'cash',
                 'reference_no' => $payment->reference_no,
@@ -1081,7 +1161,7 @@ class DealerLedgerReportService
                 'remarks' => $payment->remarks,
                 'notes' => $payment->notes,
                 'linked_supply_id' => $payment->dealer_supply_id,
-                'include_in_ledger_amount' => $payment->include_in_ledger_amount ?? true,
+                'include_in_ledger_amount' => true,
                 'can_edit' => true,
                 'can_delete' => true,
                 'created_at' => $payment->created_at?->toIso8601String(),

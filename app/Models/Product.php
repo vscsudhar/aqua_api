@@ -31,6 +31,7 @@ class Product extends Model
         'track_stock',
         'min_stock_level',
         'is_active',
+        'for_invoice',
     ];
 
     protected function casts(): array
@@ -43,6 +44,7 @@ class Product extends Model
             'track_stock' => 'boolean',
             'min_stock_level' => 'decimal:2',
             'is_active' => 'boolean',
+            'for_invoice' => 'boolean',
         ];
     }
 
