@@ -95,8 +95,12 @@ class Company extends Model
      */
     public function scopeMainCompanies($query)
     {
-        return $query->where('company_type', 'main')
-            ->whereNull('owner_company_id');
+        return $query->whereNull('owner_company_id')
+            ->whereNotNull('plan_id')
+            ->where(function ($q) {
+                $q->where('company_type', 'main')
+                  ->orWhereNull('company_type');
+            });
     }
 
     /**
@@ -106,11 +110,14 @@ class Company extends Model
     {
         $q = $query->where(function ($sub) {
             $sub->where('company_type', 'dealer')
-                ->orWhereNotNull('owner_company_id');
+                ->orWhereNotNull('owner_company_id')
+                ->orWhereNull('plan_id');
         });
 
         if ($ownerCompanyId) {
             $q->where('owner_company_id', $ownerCompanyId);
+        } else {
+            $q->whereNotNull('owner_company_id');
         }
 
         return $q;
@@ -118,11 +125,15 @@ class Company extends Model
 
     public function isMainCompany(): bool
     {
-        return $this->company_type === 'main' && empty($this->owner_company_id);
+        return empty($this->owner_company_id)
+            && !empty($this->plan_id)
+            && ($this->company_type === 'main' || empty($this->company_type));
     }
 
     public function isDealerCompany(): bool
     {
-        return $this->company_type === 'dealer' || !empty($this->owner_company_id);
+        return !empty($this->owner_company_id)
+            || empty($this->plan_id)
+            || $this->company_type === 'dealer';
     }
 }
