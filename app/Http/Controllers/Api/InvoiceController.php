@@ -117,6 +117,7 @@ class InvoiceController extends Controller
             'is_final' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
             'terms' => ['nullable', 'string'],
+            'show_bank_details' => ['nullable', 'boolean'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_method' => ['nullable', 'string', 'max:50'],
@@ -199,6 +200,7 @@ class InvoiceController extends Controller
             'is_final' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string'],
             'terms' => ['nullable', 'string'],
+            'show_bank_details' => ['nullable', 'boolean'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_method' => ['nullable', 'string', 'max:50'],
@@ -325,11 +327,42 @@ class InvoiceController extends Controller
     }
 
     /**
+     * Check if the company owning the invoice has an expired subscription.
+     */
+    protected function isInvoiceCompanyExpired(Invoice $invoice): bool
+    {
+        $company = $invoice->company;
+        if (! $company) {
+            return false;
+        }
+
+        if ($company->status === 'inactive') {
+            return true;
+        }
+
+        if (! empty($company->expires_at)) {
+            $expiresAt = \Carbon\Carbon::parse($company->expires_at, 'Asia/Kolkata')->endOfDay();
+            if ($expiresAt->isPast()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Download or stream PDF invoice.
      */
     public function downloadPdf(int $id): Response
     {
         $invoice = Invoice::findOrFail($id);
+
+        if ($this->isInvoiceCompanyExpired($invoice)) {
+            return response()->make('Your plan has expired. Please renew your subscription. Contact SS Aqua Flow.', 403, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+            ]);
+        }
+
         $pdf = $this->billingService->renderInvoicePdf($invoice);
 
         return $pdf->download("Invoice-{$invoice->invoice_no}.pdf");
@@ -341,6 +374,13 @@ class InvoiceController extends Controller
     public function printPdf(int $id): Response
     {
         $invoice = Invoice::findOrFail($id);
+
+        if ($this->isInvoiceCompanyExpired($invoice)) {
+            return response()->make('Your plan has expired. Please renew your subscription. Contact SS Aqua Flow.', 403, [
+                'Content-Type' => 'text/plain; charset=UTF-8',
+            ]);
+        }
+
         $pdf = $this->billingService->renderInvoicePdf($invoice);
 
         return $pdf->stream("Invoice-{$invoice->invoice_no}.pdf");
@@ -352,6 +392,11 @@ class InvoiceController extends Controller
     public function showHtml(int $id)
     {
         $invoice = Invoice::with(['company', 'dealer', 'supply', 'items.product', 'payments'])->findOrFail($id);
+
+        if ($this->isInvoiceCompanyExpired($invoice)) {
+            $expiredHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Subscription Expired</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8fafc;color:#1e293b;text-align:center;padding:20px;box-sizing:border-box}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:36px 28px;max-width:460px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.08)}.icon{font-size:36px;margin-bottom:12px}h2{font-size:20px;font-weight:700;color:#0f172a;margin:0 0 10px}p{font-size:14px;line-height:1.6;color:#64748b;margin:0}</style></head><body><div class="card"><div class="icon">⚠️</div><h2>Subscription Expired</h2><p>Your plan has expired. Please renew your subscription. Contact SS Aqua Flow.</p></div></body></html>';
+            return response($expiredHtml, 403)->header('Content-Type', 'text/html; charset=UTF-8');
+        }
 
         $html = $this->billingService->renderInvoiceHtml($invoice);
 

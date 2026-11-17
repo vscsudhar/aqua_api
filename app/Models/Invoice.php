@@ -55,6 +55,7 @@ class Invoice extends Model
         'finalized_by',
         'notes',
         'terms',
+        'show_bank_details',
         'idempotency_key',
         'created_by',
         'updated_by',
@@ -82,6 +83,7 @@ class Invoice extends Model
             'balance_due' => 'decimal:2',
             'cancelled_at' => 'datetime',
             'finalized_at' => 'datetime',
+            'show_bank_details' => 'boolean',
         ];
     }
 

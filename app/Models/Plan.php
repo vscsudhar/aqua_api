@@ -26,6 +26,8 @@ class Plan extends Model
 
     public function companies(): HasMany
     {
-        return $this->hasMany(Company::class);
+        return $this->hasMany(Company::class)
+            ->where('company_type', 'main')
+            ->whereNull('owner_company_id');
     }
 }

@@ -21,8 +21,8 @@ class EnsureCompanyPlanActiveMiddleware
             return $next($request);
         }
 
-        // Allow read-only (GET, HEAD, OPTIONS) and authentication/logout requests
-        if ($request->isMethodSafe() || $request->is('*/logout') || $request->is('*/auth/me')) {
+        // Allow authentication, me, logout, and backup check
+        if ($request->is('*/logout') || $request->is('*/auth/me') || $request->is('*/backup-check')) {
             return $next($request);
         }
 
@@ -35,19 +35,28 @@ class EnsureCompanyPlanActiveMiddleware
         if ($company->status === 'inactive') {
             $isExpired = true;
         } elseif (! empty($company->expires_at)) {
-            $expiresAt = Carbon::parse($company->expires_at)->endOfDay();
+            $expiresAt = Carbon::parse($company->expires_at, 'Asia/Kolkata')->endOfDay();
             if ($expiresAt->isPast()) {
                 $isExpired = true;
             }
         }
 
         if ($isExpired) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Your subscription plan has expired. Please renew your plan soon. You are currently in read-only mode to view existing data.',
-                'is_plan_expired' => true,
-                'expires_at' => $company->expires_at ? Carbon::parse($company->expires_at)->format('Y-m-d') : null,
-            ], 403);
+            // Check if this is a blocked operation:
+            // 1) All non-safe HTTP methods (POST, PUT, PATCH, DELETE)
+            // 2) Export/download/print/generate endpoints even on GET
+            $path = $request->path();
+            $isExportOrPrint = (bool) preg_match('#/(pdf|print|html|export-pdf|export-excel|export-csv)$#i', $path);
+
+            if (! $request->isMethodSafe() || $isExportOrPrint) {
+                return response()->json([
+                    'status' => 'error',
+                    'error_code' => 'SUBSCRIPTION_EXPIRED',
+                    'message' => 'Your plan has expired. Please renew your subscription. Contact SS Aqua Flow.',
+                    'is_plan_expired' => true,
+                    'expires_at' => $company->expires_at ? Carbon::parse($company->expires_at)->format('Y-m-d') : null,
+                ], 403);
+            }
         }
 
         return $next($request);

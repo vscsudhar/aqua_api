@@ -51,9 +51,15 @@ class AuthController extends Controller
             );
         }
 
-        // Scenario 11: Inactive company cannot log in
+        // Scenario 11: Inactive company cannot log in, and dealer clients cannot log in directly
         if ($user->company_id) {
             $company = Company::find($user->company_id);
+            if ($company && $company->isDealerCompany()) {
+                return $this->errorResponse(
+                    'Dealer client companies are not permitted to log in directly.',
+                    403
+                );
+            }
             if ($company && $company->status !== 'active') {
                 return $this->errorResponse(
                     'Your company account is currently inactive. Please contact administration.',

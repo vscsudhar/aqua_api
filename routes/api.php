@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\DealerPriceController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PurchaseController;
 use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\SupplierController;
@@ -39,6 +40,10 @@ Route::prefix('v1')->group(function () {
 
         Route::middleware(['auth:sanctum', SuperAdminMiddleware::class])->group(function () {
             Route::get('/dashboard', [SuperAdminController::class, 'dashboard']);
+
+            // Super Admin Profile
+            Route::get('/profile', [ProfileController::class, 'show']);
+            Route::put('/profile', [ProfileController::class, 'update']);
 
             // Companies CRUD
             Route::get('/companies', [SuperAdminController::class, 'companiesIndex']);
@@ -69,6 +74,12 @@ Route::prefix('v1')->group(function () {
     // ==========================================
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:120,1')->name('login');
+    });
+
+    // Profile Management (Authenticated User - aqua_user & tenant users)
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/profile', [ProfileController::class, 'show']);
+        Route::put('/profile', [ProfileController::class, 'update']);
     });
 
     // Public Company Logo Endpoints (CORS-enabled for Web Image rendering)
@@ -249,4 +260,10 @@ Route::get('/backup-check', function () {
     ]);
 });
     });
+});
+
+// Root fallback for /api/profile (without v1 prefix)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/profile', [ProfileController::class, 'show']);
+    Route::put('/profile', [ProfileController::class, 'update']);
 });

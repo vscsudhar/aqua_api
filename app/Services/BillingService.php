@@ -196,6 +196,7 @@ class BillingService
                 'terms' => !empty(trim($data['terms'] ?? '')) 
                     ? trim($data['terms']) 
                     : ($settings->invoice_footer_notes ?? null),
+                'show_bank_details' => isset($data['show_bank_details']) ? (bool) $data['show_bank_details'] : false,
                 'idempotency_key' => $data['idempotency_key'] ?? null,
                 'created_by' => $user?->id,
             ]);
@@ -353,6 +354,9 @@ class BillingService
                 $invoice->terms = !empty(trim($data['terms'] ?? ''))
                     ? trim($data['terms'])
                     : ($settings->invoice_footer_notes ?? null);
+            }
+            if (array_key_exists('show_bank_details', $data)) {
+                $invoice->show_bank_details = (bool) $data['show_bank_details'];
             }
             $invoice->updated_by = $user?->id;
 

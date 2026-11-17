@@ -58,6 +58,7 @@ class InvoiceResource extends JsonResource
             'finalized_by' => $this->finalizer?->name,
             'notes' => $this->notes,
             'terms' => $this->terms,
+            'show_bank_details' => (bool) ($this->show_bank_details ?? false),
             'items_count' => $this->whenCounted('items'),
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
             'payments' => InvoicePaymentResource::collection($this->whenLoaded('payments')),

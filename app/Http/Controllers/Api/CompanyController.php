@@ -20,8 +20,14 @@ class CompanyController extends Controller
     {
         $ownerCompanyId = $request->user()?->company_id;
 
-        $query = Company::query()
-            ->when($ownerCompanyId, fn ($q) => $q->where('owner_company_id', $ownerCompanyId));
+        if (!$ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()?->isSuperAdmin())) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Only an authenticated company can access dealer companies.',
+            ], 403);
+        }
+
+        $query = Company::dealerCompanies($ownerCompanyId);
 
         if ($request->filled('search')) {
             $search = trim($request->query('search'));
@@ -52,6 +58,14 @@ class CompanyController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        $ownerCompanyId = $request->user()?->company_id;
+        if (!$ownerCompanyId) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Only an authenticated company can onboard dealer companies.',
+            ], 403);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'company_code' => 'nullable|string|max:50',
@@ -62,8 +76,6 @@ class CompanyController extends Controller
             'gstin' => 'nullable|string|max:50',
             'status' => 'nullable|in:active,inactive',
         ]);
-
-        $ownerCompanyId = $request->user()?->company_id;
 
         return DB::transaction(function () use ($validated, $ownerCompanyId) {
             $code = $validated['company_code'] ?? null;
@@ -88,6 +100,7 @@ class CompanyController extends Controller
 
             $company = Company::create([
                 'owner_company_id' => $ownerCompanyId,
+                'company_type' => 'dealer',
                 'company_code' => $code,
                 'name' => trim($validated['name']),
                 'contact_person' => $validated['contact_person'] ?? null,
@@ -96,6 +109,8 @@ class CompanyController extends Controller
                 'address' => $validated['address'] ?? null,
                 'gstin' => !empty($validated['gstin']) ? strtoupper(trim($validated['gstin'])) : null,
                 'status' => $validated['status'] ?? 'active',
+                'plan_id' => null,
+                'expires_at' => null,
             ]);
 
             return response()->json([
@@ -112,15 +127,14 @@ class CompanyController extends Controller
     public function show(Request $request, int $id): JsonResponse
     {
         $ownerCompanyId = $request->user()?->company_id;
-
-        $query = Company::query();
-        if ($ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()->isSuperAdmin())) {
-            $query->where(function ($q) use ($ownerCompanyId) {
-                $q->where('owner_company_id', $ownerCompanyId)
-                  ->orWhere('id', $ownerCompanyId);
-            });
+        if (!$ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()?->isSuperAdmin())) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Only an authenticated company can view dealer companies.',
+            ], 403);
         }
 
+        $query = Company::dealerCompanies($ownerCompanyId);
         $company = $query->findOrFail($id);
 
         return response()->json([
@@ -135,15 +149,14 @@ class CompanyController extends Controller
     public function update(Request $request, int $id): JsonResponse
     {
         $ownerCompanyId = $request->user()?->company_id;
-
-        $query = Company::query();
-        if ($ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()->isSuperAdmin())) {
-            $query->where(function ($q) use ($ownerCompanyId) {
-                $q->where('owner_company_id', $ownerCompanyId)
-                  ->orWhere('id', $ownerCompanyId);
-            });
+        if (!$ownerCompanyId && (!method_exists($request->user(), 'isSuperAdmin') || !$request->user()?->isSuperAdmin())) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Unauthorized: Only an authenticated company can update dealer companies.',
+            ], 403);
         }
 
+        $query = Company::dealerCompanies($ownerCompanyId);
         $company = $query->findOrFail($id);
 
         $validated = $request->validate([

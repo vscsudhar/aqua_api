@@ -75,13 +75,14 @@ class SuperAdminController extends Controller
      */
     public function dashboard(): JsonResponse
     {
-        $totalCompanies = Company::count();
-        $activeCompanies = Company::where('status', 'active')->count();
-        $inactiveCompanies = Company::where('status', 'inactive')->count();
+        $totalCompanies = Company::mainCompanies()->count();
+        $activeCompanies = Company::mainCompanies()->where('status', 'active')->count();
+        $inactiveCompanies = Company::mainCompanies()->where('status', 'inactive')->count();
         $totalUsers = User::withoutGlobalScopes()->where('role', '!=', 'super_admin')->count();
         $activePlans = Plan::where('status', 'active')->count();
 
-        $recentCompanies = Company::with(['plan', 'adminUser'])
+        $recentCompanies = Company::mainCompanies()
+            ->with(['plan', 'adminUser'])
             ->withCount('users')
             ->orderBy('id', 'desc')
             ->limit(10)
@@ -102,7 +103,7 @@ class SuperAdminController extends Controller
      */
     public function companiesIndex(Request $request): JsonResponse
     {
-        $query = Company::with(['plan', 'adminUser'])->withCount('users');
+        $query = Company::mainCompanies()->with(['plan', 'adminUser'])->withCount('users');
 
         if ($request->filled('search')) {
             $search = trim($request->query('search'));
@@ -187,6 +188,8 @@ class SuperAdminController extends Controller
             // 1. Create company record
             $company = Company::create([
                 'company_code' => $companyCode,
+                'company_type' => 'main',
+                'owner_company_id' => null,
                 'name' => trim($request->input('name')),
                 'plan_id' => $plan->id,
                 'expires_at' => $expiresAt,
@@ -270,7 +273,7 @@ class SuperAdminController extends Controller
      */
     public function companiesShow(int $id): JsonResponse
     {
-        $company = Company::with(['plan', 'adminUser', 'users'])->withCount('users')->findOrFail($id);
+        $company = Company::mainCompanies()->with(['plan', 'adminUser', 'users'])->withCount('users')->findOrFail($id);
 
         return $this->successResponse($company, 'Company details retrieved successfully.');
     }
@@ -280,7 +283,7 @@ class SuperAdminController extends Controller
      */
     public function companiesUpdate(Request $request, int $id): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $company = Company::mainCompanies()->findOrFail($id);
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -322,7 +325,7 @@ class SuperAdminController extends Controller
      */
     public function companiesToggleStatus(int $id): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $company = Company::mainCompanies()->findOrFail($id);
         $company->status = $company->status === 'active' ? 'inactive' : 'active';
         $company->save();
 
@@ -334,7 +337,7 @@ class SuperAdminController extends Controller
      */
     public function companiesDestroy(int $id): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $company = Company::mainCompanies()->findOrFail($id);
         $companyName = $company->name;
         $companyCode = $company->company_code;
 
@@ -381,10 +384,13 @@ class SuperAdminController extends Controller
                 }
             }
 
-            // 3. Delete company users
+            // 3. Delete onboarded client/dealer companies
+            Company::where('owner_company_id', $companyId)->delete();
+
+            // 4. Delete company users
             User::withoutGlobalScopes()->where('company_id', $companyId)->delete();
 
-            // 4. Delete company
+            // 5. Delete company
             $company->delete();
         });
 
@@ -399,7 +405,7 @@ class SuperAdminController extends Controller
      */
     public function companyUsersIndex(int $id): JsonResponse
     {
-        $company = Company::with(['plan'])->findOrFail($id);
+        $company = Company::mainCompanies()->with(['plan'])->findOrFail($id);
         $users = User::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->orderBy('id', 'desc')
@@ -429,7 +435,7 @@ class SuperAdminController extends Controller
      */
     public function companyUsersStore(Request $request, int $id): JsonResponse
     {
-        $company = Company::with('plan')->findOrFail($id);
+        $company = Company::mainCompanies()->with('plan')->findOrFail($id);
         $maxUsers = (int) ($company->plan?->max_users ?? 5);
 
         $currentUsersCount = User::withoutGlobalScopes()->where('company_id', $company->id)->count();
@@ -492,7 +498,7 @@ class SuperAdminController extends Controller
      */
     public function companyUsersUpdate(Request $request, int $id, int $userId): JsonResponse
     {
-        $company = Company::findOrFail($id);
+        $company = Company::mainCompanies()->findOrFail($id);
         $user = User::withoutGlobalScopes()->where('company_id', $company->id)->findOrFail($userId);
 
         $request->validate([

@@ -15,6 +15,7 @@ class Company extends Model
 
     protected $fillable = [
         'owner_company_id',
+        'company_type',
         'company_code',
         'name',
         'contact_person',
@@ -77,5 +78,51 @@ class Company extends Model
     public function settings(): HasOne
     {
         return $this->hasOne(CompanySetting::class);
+    }
+
+    public function ownerCompany(): BelongsTo
+    {
+        return $this->belongsTo(Company::class, 'owner_company_id');
+    }
+
+    public function childDealerCompanies(): HasMany
+    {
+        return $this->hasMany(Company::class, 'owner_company_id');
+    }
+
+    /**
+     * Scope for Main Subscription Companies created in aqua_user.
+     */
+    public function scopeMainCompanies($query)
+    {
+        return $query->where('company_type', 'main')
+            ->whereNull('owner_company_id');
+    }
+
+    /**
+     * Scope for Dealer / Corporate Customer Companies created in marina_aqua.
+     */
+    public function scopeDealerCompanies($query, $ownerCompanyId = null)
+    {
+        $q = $query->where(function ($sub) {
+            $sub->where('company_type', 'dealer')
+                ->orWhereNotNull('owner_company_id');
+        });
+
+        if ($ownerCompanyId) {
+            $q->where('owner_company_id', $ownerCompanyId);
+        }
+
+        return $q;
+    }
+
+    public function isMainCompany(): bool
+    {
+        return $this->company_type === 'main' && empty($this->owner_company_id);
+    }
+
+    public function isDealerCompany(): bool
+    {
+        return $this->company_type === 'dealer' || !empty($this->owner_company_id);
     }
 }

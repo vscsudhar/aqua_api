@@ -499,16 +499,16 @@
                 <thead>
                     <tr style="border-bottom: 1pt solid #1e293b; background: #f8fafc;">
                         <th style="width: {{ $isWithoutGst ? '5%' : '4.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
-                        <th style="width: {{ $isWithoutGst ? '38%' : '25%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Product Name</th>
-                        <th style="width: {{ $isWithoutGst ? '9%' : '7%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
+                        <th style="width: {{ $isWithoutGst ? '37%' : '25%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Product Name</th>
+                        <th style="width: {{ $isWithoutGst ? '10%' : '10%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
                         <th style="width: {{ $isWithoutGst ? '8%' : '6%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
                         <th style="width: {{ $isWithoutGst ? '8%' : '5.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
                         <th style="width: {{ $isWithoutGst ? '10%' : '8.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
                         <th style="width: {{ $isWithoutGst ? '11%' : '10%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
                         @if(!$isWithoutGst)
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST</th>
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST</th>
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST</th>
+                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST</th>
+                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST</th>
+                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST</th>
                         @endif
                         <th style="width: {{ $isWithoutGst ? '11%' : '11%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: right;">Total Amount</th>
                     </tr>
@@ -534,9 +534,9 @@
                                 $itCgstRate = round($itTaxRate / 2, 2);
                                 $itSgstRate = round($itTaxRate / 2, 2);
                             }
-                            if ($itCgstAmt <= 0 && $itSgstAmt <= 0 && $item->tax_amount > 0) {
-                                $itCgstAmt = round($item->tax_amount / 2, 2);
-                                $itSgstAmt = round($item->tax_amount / 2, 2);
+                            if ($itCgstAmt <= 0 && $itSgstAmt <= 0 && ($item->tax_amount ?? 0) > 0) {
+                                $itCgstAmt = round(($item->tax_amount ?? 0) / 2, 2);
+                                $itSgstAmt = round(($item->tax_amount ?? 0) / 2, 2);
                             }
                             $itIgstRate = 0.0;
                             $itIgstAmt = 0.0;
@@ -544,8 +544,8 @@
                             if ($itIgstRate <= 0 && $itTaxRate > 0) {
                                 $itIgstRate = $itTaxRate;
                             }
-                            if ($itIgstAmt <= 0 && $item->tax_amount > 0) {
-                                $itIgstAmt = (float)$item->tax_amount;
+                            if ($itIgstAmt <= 0 && ($item->tax_amount ?? 0) > 0) {
+                                $itIgstAmt = (float)($item->tax_amount ?? 0);
                             }
                             $itCgstRate = 0.0;
                             $itCgstAmt = 0.0;
@@ -565,7 +565,7 @@
                                 <div style="font-size: 7.5pt; color: #64748b;">{{ $item->notes }}</div>
                             @endif
                         </td>
-                        <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->hsn_sac }}</td>
+                        <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap; word-break: keep-all; font-size: 8pt;">{{ $item->hsn_sac }}</td>
                         <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ number_format($item->quantity, 0) }}</td>
                         <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->unit ?? 'Nos' }}</td>
                         <td style="padding: 4pt 2pt; text-align: right; border-right: 1pt solid #1e293b;">₹{{ formatInvoiceAmount($item->unit_price) }}</td>
@@ -661,11 +661,16 @@
 
         <div style="flex: 0 0 auto;">
             @if($isLastPage)
+            @php
+                $hasBankDetails = !empty($settings->bank_name) || !empty($settings->account_number) || !empty($settings->account_no) || !empty($settings->ifsc_code);
+                $shouldShowBankDetails = (!$isWithoutGst || (bool)($invoice->show_bank_details ?? false)) && $hasBankDetails;
+            @endphp
             <!-- BOTTOM 2-COLUMN SECTION: Bank Details (Left) | Final Consolidated Totals & Words (Right) -->
             <table style="width: 100%; table-layout: fixed; border-collapse: collapse; border-bottom: 1pt solid #1e293b;">
                 <tr>
                     <!-- Left: Bank Details & Notes -->
                     <td style="width: 54%; vertical-align: top; padding: 5pt 10pt; border-right: 1pt solid #1e293b; font-size: 9pt; line-height: 1.35;">
+                        @if($shouldShowBankDetails)
                         <div style="font-weight: bold; font-size: 10pt; color: #0f172a; margin-bottom: 2pt;">Bank Details</div>
                         <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
                             <tr>
@@ -697,6 +702,7 @@
                             </tr>
                             @endif
                         </table>
+                        @endif
 
                         @if(!empty(trim($invoice->notes ?? '')))
                         <div style="margin-top: 3pt; font-size: 8.5pt; color: #475569;">
