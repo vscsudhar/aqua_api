@@ -77,11 +77,52 @@
             src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
         }
 
-        /* Standard Professional A4 Margins: 10mm on all sides */
+        @if(!empty($isHtmlView))
+        /* Browser Print Styling: 0 margin and margin-box removal completely disables browser-generated headers & footers (URL, date/time, page 1/1) */
+        @page {
+            size: A4 portrait;
+            margin: 0;
+            @top-left { content: none !important; }
+            @top-center { content: none !important; }
+            @top-right { content: none !important; }
+            @bottom-left { content: none !important; }
+            @bottom-center { content: none !important; }
+            @bottom-right { content: none !important; }
+        }
+        @page :first {
+            margin: 0;
+            @top-left { content: none !important; }
+            @top-center { content: none !important; }
+            @top-right { content: none !important; }
+            @bottom-left { content: none !important; }
+            @bottom-center { content: none !important; }
+            @bottom-right { content: none !important; }
+        }
+        @page :left {
+            margin: 0;
+            @top-left { content: none !important; }
+            @top-center { content: none !important; }
+            @top-right { content: none !important; }
+            @bottom-left { content: none !important; }
+            @bottom-center { content: none !important; }
+            @bottom-right { content: none !important; }
+        }
+        @page :right {
+            margin: 0;
+            @top-left { content: none !important; }
+            @top-center { content: none !important; }
+            @top-right { content: none !important; }
+            @bottom-left { content: none !important; }
+            @bottom-center { content: none !important; }
+            @bottom-right { content: none !important; }
+        }
+        @else
+        /* Standard Professional A4 Margins for Dompdf */
         @page {
             size: A4 portrait;
             margin: 10mm;
         }
+        @endif
 
         *, *::before, *::after {
             box-sizing: border-box;
@@ -194,37 +235,64 @@
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 10mm;
+                margin: 0 !important;
+                @top-left { content: none !important; }
+                @top-center { content: none !important; }
+                @top-right { content: none !important; }
+                @bottom-left { content: none !important; }
+                @bottom-center { content: none !important; }
+                @bottom-right { content: none !important; }
             }
-            html {
-                background: #ffffff !important;
+            @page :first {
+                margin: 0 !important;
+                @top-left { content: none !important; }
+                @top-center { content: none !important; }
+                @top-right { content: none !important; }
+                @bottom-left { content: none !important; }
+                @bottom-center { content: none !important; }
+                @bottom-right { content: none !important; }
+            }
+            @page :left {
+                margin: 0 !important;
+                @top-left { content: none !important; }
+                @top-center { content: none !important; }
+                @top-right { content: none !important; }
+                @bottom-left { content: none !important; }
+                @bottom-center { content: none !important; }
+                @bottom-right { content: none !important; }
+            }
+            @page :right {
+                margin: 0 !important;
+                @top-left { content: none !important; }
+                @top-center { content: none !important; }
+                @top-right { content: none !important; }
+                @bottom-left { content: none !important; }
+                @bottom-center { content: none !important; }
+                @bottom-right { content: none !important; }
+            }
+            html, body {
+                width: 210mm !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                width: 100% !important;
-                overflow: visible !important;
-            }
-            body {
-                font-family: "Times New Roman", Times, "DejaVu Serif", serif !important;
                 background: #ffffff !important;
-                margin: 0 auto !important;
-                padding: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
                 overflow: visible !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
+            }
+            body {
+                font-family: "Times New Roman", Times, "DejaVu Serif", serif !important;
             }
             .no-print {
                 display: none !important;
             }
             .page-container {
-                width: 100% !important;
-                max-width: 100% !important;
-                min-width: 0 !important;
+                width: 190mm !important;
+                max-width: 190mm !important;
+                min-width: 190mm !important;
                 height: 276mm !important;
                 min-height: 276mm !important;
                 max-height: 276mm !important;
-                margin: 0 auto !important;
+                margin: 10mm auto !important;
                 padding: 0 !important;
                 box-shadow: none !important;
                 border: 1pt solid #1e293b !important;
@@ -232,12 +300,14 @@
                 position: relative !important;
                 overflow: hidden !important;
                 page-break-inside: avoid !important;
+                break-inside: avoid !important;
                 display: flex !important;
                 flex-direction: column !important;
                 justify-content: space-between !important;
             }
             .page-break {
                 page-break-after: always !important;
+                break-after: page !important;
             }
             .table-responsive-wrapper {
                 width: 100% !important;
@@ -317,7 +387,7 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M6 9V2h12v7"></path><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                 Print / Save PDF
             </button>
-            <a href="/invoices/{{ $invoice->id }}/pdf" target="_blank" class="btn btn-secondary">
+            <a href="/invoices/{{ $invoice->id ?? '' }}/pdf" target="_blank" class="btn btn-secondary">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                 Download PDF
             </a>

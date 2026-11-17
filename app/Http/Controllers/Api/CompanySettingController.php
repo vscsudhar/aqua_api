@@ -122,7 +122,6 @@ class CompanySettingController extends Controller
 
         $updatePayload = [
             'logo_path' => $path,
-            'logo_data' => null,
         ];
 
         $settings->update($updatePayload);
@@ -153,13 +152,11 @@ class CompanySettingController extends Controller
 
         $settings->update([
             'logo_path' => null,
-            'logo_data' => null,
         ]);
 
         if (! empty($settings->company_id)) {
             \App\Models\Company::where('id', $settings->company_id)->update([
                 'logo_path' => null,
-                'logo_data' => null,
             ]);
         }
 

@@ -34,11 +34,14 @@ class CompanySetting extends Model
         'currency_code',
         'default_tax_rate',
         'logo_path',
-        'logo_data',
         'invoice_prefix',
         'invoice_number_padding',
         'next_invoice_number',
         'invoice_footer_notes',
+    ];
+
+    protected $hidden = [
+        'logo_data',
     ];
 
     protected $casts = [
