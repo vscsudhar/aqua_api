@@ -31,7 +31,6 @@ class CompanySettingResource extends JsonResource
             'currency_code' => $this->currency_code ?? 'INR',
             'default_tax_rate' => (float) ($this->default_tax_rate ?? 18.00),
             'logo_path' => $this->logo_path,
-            'logo_data' => $this->logo_data,
             'logo_url' => $this->logo_url,
             'invoice_prefix' => $this->invoice_prefix ?? '',
             'invoice_number_padding' => (int) ($this->invoice_number_padding ?? 4),

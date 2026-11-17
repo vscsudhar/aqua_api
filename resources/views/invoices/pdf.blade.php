@@ -366,8 +366,11 @@
                     <tr>
                         <!-- Left Corner: Logo -->
                         <td style="width: 18%; vertical-align: middle; text-align: left;">
-                            @if(!empty($logoBase64))
-                                <img src="{{ $logoBase64 }}" style="max-height: 55px; max-width: 110px; object-fit: contain;" alt="Logo" />
+                            @php
+                                $finalLogoUrl = !empty($logoUrl) ? $logoUrl : (!empty($settings->logo_url) ? $settings->logo_url : null);
+                            @endphp
+                            @if(!empty($finalLogoUrl))
+                                <img src="{{ $finalLogoUrl }}" style="max-height: 55px; max-width: 110px; object-fit: contain;" alt="Logo" />
                             @endif
                         </td>
 
@@ -499,16 +502,16 @@
                 <thead>
                     <tr style="border-bottom: 1pt solid #1e293b; background: #f8fafc;">
                         <th style="width: {{ $isWithoutGst ? '5%' : '4.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">S.No</th>
-                        <th style="width: {{ $isWithoutGst ? '37%' : '25%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Product Name</th>
-                        <th style="width: {{ $isWithoutGst ? '10%' : '10%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
-                        <th style="width: {{ $isWithoutGst ? '8%' : '6%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
-                        <th style="width: {{ $isWithoutGst ? '8%' : '5.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
+                        <th style="width: {{ $isWithoutGst ? '35%' : '24%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: left; border-right: 1pt solid #1e293b;">Product Name</th>
+                        <th style="width: {{ $isWithoutGst ? '10%' : '9.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">HSN</th>
+                        <th style="width: {{ $isWithoutGst ? '8%' : '5.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">Qty</th>
+                        <th style="width: {{ $isWithoutGst ? '10%' : '9.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">UOM</th>
                         <th style="width: {{ $isWithoutGst ? '10%' : '8.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
                         <th style="width: {{ $isWithoutGst ? '11%' : '10%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
                         @if(!$isWithoutGst)
-                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST</th>
-                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST</th>
-                        <th style="width: 10%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST</th>
+                        <th style="width: 9%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST</th>
+                        <th style="width: 9%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST</th>
+                        <th style="width: 9%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST</th>
                         @endif
                         <th style="width: {{ $isWithoutGst ? '11%' : '11%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: right;">Total Amount</th>
                     </tr>
@@ -567,7 +570,7 @@
                         </td>
                         <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap; word-break: keep-all; font-size: 8pt;">{{ $item->hsn_sac }}</td>
                         <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ number_format($item->quantity, 0) }}</td>
-                        <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b;">{{ $item->unit ?? 'Nos' }}</td>
+                        <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap; word-break: keep-all; font-size: 8pt;">{{ $item->unit ?? 'Nos' }}</td>
                         <td style="padding: 4pt 2pt; text-align: right; border-right: 1pt solid #1e293b;">₹{{ formatInvoiceAmount($item->unit_price) }}</td>
                         <td style="padding: 4pt 2pt; text-align: right; border-right: 1pt solid #1e293b;">₹{{ formatInvoiceAmount($item->taxable_amount) }}</td>
                         @if(!$isWithoutGst)

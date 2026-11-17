@@ -120,14 +120,9 @@ class CompanySettingController extends Controller
         $filename = 'company_logo_'.($settings->company_id ?: 1).'_'.time().'.'.$extension;
         $path = $file->storeAs('logos', $filename, 'public');
 
-        // Read binary content and encode as persistent Base64 Data URI for permanent database persistence
-        $fileBytes = file_get_contents($file->getRealPath());
-        $mime = $file->getMimeType() ?: 'image/png';
-        $logoDataUri = 'data:' . $mime . ';base64,' . base64_encode($fileBytes);
-
         $updatePayload = [
             'logo_path' => $path,
-            'logo_data' => $logoDataUri,
+            'logo_data' => null,
         ];
 
         $settings->update($updatePayload);
@@ -193,28 +188,6 @@ class CompanySettingController extends Controller
             ]);
         }
 
-        // Persistent database fallback (survives container restarts / disk wipes)
-        if (! empty($settings->logo_data)) {
-            if (preg_match('/^data:([^;]+);base64,(.+)$/', $settings->logo_data, $matches)) {
-                $mime = $matches[1];
-                $binary = base64_decode($matches[2]);
-            } else {
-                $mime = 'image/png';
-                $binary = base64_decode($settings->logo_data);
-            }
-
-            if ($settings->logo_path) {
-                @Storage::disk('public')->put($settings->logo_path, $binary);
-            }
-
-            return response($binary, 200, [
-                'Content-Type' => $mime,
-                'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
-        }
-
         // Return clean SVG badge placeholder if no custom logo uploaded
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="60" viewBox="0 0 200 60">'
             .'<rect width="200" height="60" rx="8" fill="#0284C7"/>'
@@ -251,29 +224,6 @@ class CompanySettingController extends Controller
             ]);
         }
 
-        // Persistent database fallback (survives container restarts / disk wipes)
-        $logoData = $company?->logo_data ?: $setting?->logo_data;
-        if ($logoData) {
-            if (preg_match('/^data:([^;]+);base64,(.+)$/', $logoData, $matches)) {
-                $mime = $matches[1];
-                $binary = base64_decode($matches[2]);
-            } else {
-                $mime = 'image/png';
-                $binary = base64_decode($logoData);
-            }
-
-            if ($logoPath) {
-                @Storage::disk('public')->put($logoPath, $binary);
-            }
-
-            return response($binary, 200, [
-                'Content-Type' => $mime,
-                'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
-        }
-
         return response()->noContent(404, [
             'Access-Control-Allow-Origin' => '*',
         ]);
@@ -290,55 +240,6 @@ class CompanySettingController extends Controller
             $mime = @mime_content_type($filePath) ?: 'image/png';
 
             return response()->file($filePath, [
-                'Content-Type' => $mime,
-                'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
-                'Cache-Control' => 'public, max-age=86400',
-            ]);
-        }
-
-        // Persistent Self-Healing: If missing from disk (e.g. server restart / container redeploy),
-        // recover directly from permanent database storage
-        $setting = CompanySetting::withoutGlobalScopes()
-            ->where(function ($q) use ($filename) {
-                $q->where('logo_path', 'like', "%{$filename}%")
-                  ->orWhere('logo_path', 'like', "logos/{$filename}");
-            })
-            ->whereNotNull('logo_data')
-            ->first();
-
-        $company = null;
-        if (! $setting) {
-            $company = \App\Models\Company::where(function ($q) use ($filename) {
-                $q->where('logo_path', 'like', "%{$filename}%")
-                  ->orWhere('logo_path', 'like', "logos/{$filename}");
-            })
-            ->whereNotNull('logo_data')
-            ->first();
-        }
-
-        // Also check if filename has company_logo_{company_id}
-        if (! $setting && ! $company && preg_match('/company_logo_(\d+)_/', $filename, $m)) {
-            $cId = (int) $m[1];
-            $setting = CompanySetting::withoutGlobalScopes()->where('company_id', $cId)->whereNotNull('logo_data')->first();
-            if (! $setting) {
-                $company = \App\Models\Company::where('id', $cId)->whereNotNull('logo_data')->first();
-            }
-        }
-
-        $logoData = $setting?->logo_data ?: $company?->logo_data;
-        if ($logoData) {
-            if (preg_match('/^data:([^;]+);base64,(.+)$/', $logoData, $matches)) {
-                $mime = $matches[1];
-                $binary = base64_decode($matches[2]);
-            } else {
-                $mime = 'image/png';
-                $binary = base64_decode($logoData);
-            }
-
-            @Storage::disk('public')->put($path, $binary);
-
-            return response($binary, 200, [
                 'Content-Type' => $mime,
                 'Access-Control-Allow-Origin' => '*',
                 'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',

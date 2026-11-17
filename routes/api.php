@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\DealerLedgerReportController;
 use App\Http\Controllers\Api\DealerPriceController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\PurchaseController;
@@ -37,6 +38,8 @@ Route::prefix('v1')->group(function () {
     // ==========================================
     Route::prefix('super-admin')->group(function () {
         Route::post('/login', [SuperAdminController::class, 'login'])->middleware('throttle:120,1');
+        Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->middleware('throttle:60,1');
+        Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->middleware('throttle:60,1');
 
         Route::middleware(['auth:sanctum', SuperAdminMiddleware::class])->group(function () {
             Route::get('/dashboard', [SuperAdminController::class, 'dashboard']);
@@ -44,6 +47,10 @@ Route::prefix('v1')->group(function () {
             // Super Admin Profile
             Route::get('/profile', [ProfileController::class, 'show']);
             Route::put('/profile', [ProfileController::class, 'update']);
+            Route::post('/change-password', [ProfileController::class, 'changePassword']);
+            Route::post('/profile/change-password', [ProfileController::class, 'changePassword']);
+            Route::post('/profile/image', [ProfileController::class, 'uploadImage']);
+            Route::delete('/profile/image', [ProfileController::class, 'deleteImage']);
 
             // Companies CRUD
             Route::get('/companies', [SuperAdminController::class, 'companiesIndex']);
@@ -74,12 +81,17 @@ Route::prefix('v1')->group(function () {
     // ==========================================
     Route::prefix('auth')->group(function () {
         Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:120,1')->name('login');
+        Route::post('/forgot-password', [PasswordResetController::class, 'forgotPassword'])->middleware('throttle:60,1');
+        Route::post('/reset-password', [PasswordResetController::class, 'resetPassword'])->middleware('throttle:60,1');
     });
 
     // Profile Management (Authenticated User - aqua_user & tenant users)
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/profile', [ProfileController::class, 'show']);
         Route::put('/profile', [ProfileController::class, 'update']);
+        Route::post('/profile/change-password', [ProfileController::class, 'changePassword']);
+        Route::post('/profile/image', [ProfileController::class, 'uploadImage']);
+        Route::delete('/profile/image', [ProfileController::class, 'deleteImage']);
     });
 
     // Public Company Logo Endpoints (CORS-enabled for Web Image rendering)

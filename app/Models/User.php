@@ -25,6 +25,7 @@ class User extends Authenticatable
         'email',
         'username',
         'phone',
+        'profile_image',
         'password',
         'role',
         'is_active',
@@ -87,5 +88,20 @@ class User extends Authenticatable
     public function isSalesRep(): bool
     {
         return $this->role === 'sales_rep';
+    }
+
+    public function getProfileImageUrlAttribute(): ?string
+    {
+        if (empty($this->profile_image)) {
+            return null;
+        }
+
+        if (str_starts_with($this->profile_image, 'http://') ||
+            str_starts_with($this->profile_image, 'https://') ||
+            str_starts_with($this->profile_image, 'data:image')) {
+            return $this->profile_image;
+        }
+
+        return url('storage/' . $this->profile_image);
     }
 }

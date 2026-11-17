@@ -640,7 +640,7 @@ class BottleLedgerService
     }
 
     /**
-     * Get a base64 encoded data URI for the company logo, resized to fit PDF headers.
+     * Get the company logo URL / path for PDF reports.
      */
     public function getPdfLogoBase64(?Company $company, int $maxW = 240, int $maxH = 80): ?string
     {
@@ -648,70 +648,11 @@ class BottleLedgerService
             return null;
         }
 
-        $logoPath = $company->logo_path;
-        if (! $logoPath || ! Storage::disk('public')->exists($logoPath)) {
-            return null;
+        if ($company->logo_path && Storage::disk('public')->exists($company->logo_path)) {
+            return Storage::disk('public')->path($company->logo_path);
         }
 
-        $absPath = Storage::disk('public')->path($logoPath);
-        if (! file_exists($absPath)) {
-            return null;
-        }
-
-        try {
-            $info = @getimagesize($absPath);
-            if (! $info) {
-                return null;
-            }
-
-            $origW = $info[0];
-            $origH = $info[1];
-            $mime = $info['mime'] ?? 'image/png';
-
-            if ($origW <= $maxW && $origH <= $maxH && filesize($absPath) < 102400) {
-                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
-            }
-
-            $src = null;
-            if ($mime === 'image/jpeg' || $mime === 'image/jpg') {
-                $src = @imagecreatefromjpeg($absPath);
-            } elseif ($mime === 'image/png') {
-                $src = @imagecreatefrompng($absPath);
-            } elseif ($mime === 'image/webp' && function_exists('imagecreatefromwebp')) {
-                $src = @imagecreatefromwebp($absPath);
-            }
-
-            if (! $src) {
-                return null;
-            }
-
-            $scale = min($maxW / $origW, $maxH / $origH, 1.0);
-            $newW = max(1, (int) round($origW * $scale));
-            $newH = max(1, (int) round($origH * $scale));
-
-            $thumb = imagecreatetruecolor($newW, $newH);
-            imagealphablending($thumb, false);
-            imagesavealpha($thumb, true);
-            $transparent = imagecolorallocatealpha($thumb, 255, 255, 255, 127);
-            imagefilledrectangle($thumb, 0, 0, $newW, $newH, $transparent);
-
-            imagecopyresampled($thumb, $src, 0, 0, 0, 0, $newW, $newH, $origW, $origH);
-
-            ob_start();
-            imagepng($thumb, null, 6);
-            $thumbBytes = ob_get_clean();
-
-            imagedestroy($thumb);
-            imagedestroy($src);
-
-            if ($thumbBytes) {
-                return 'data:image/png;base64,' . base64_encode($thumbBytes);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed generating PDF logo thumbnail: ' . $e->getMessage());
-        }
-
-        return null;
+        return $company->logo_url;
     }
 
     /**

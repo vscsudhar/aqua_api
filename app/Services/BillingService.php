@@ -748,26 +748,23 @@ class BillingService
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: Company::find($companyId);
 
-        $logoBase64 = $settings->logo_data ?: $company?->logo_data;
-        if (! $logoBase64) {
-            $logoPath = $settings->logo_path ?: $company?->logo_path;
-            if (! $logoPath && $companyId != 1) {
-                $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
-                $logoPath = $defaultSettings?->logo_path;
-                $logoBase64 = $defaultSettings?->logo_data;
-            }
+        $logoUrl = $settings->logo_url ?: $company?->logo_url;
+        if (! $logoUrl && $companyId != 1) {
+            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+            $logoUrl = $defaultSettings?->logo_url;
+        }
 
-            if (! $logoBase64 && $logoPath && Storage::disk('public')->exists($logoPath)) {
-                $absPath = Storage::disk('public')->path($logoPath);
-                $mime = @mime_content_type($absPath) ?: 'image/png';
-                $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
-            }
+        // For server-side PDF generation, use local file path or public URL:
+        $logoSrc = $logoUrl;
+        $logoPath = $settings->logo_path ?: $company?->logo_path;
+        if ($logoPath && Storage::disk('public')->exists($logoPath)) {
+            $logoSrc = Storage::disk('public')->path($logoPath);
         }
 
         $pdf = Pdf::loadView('invoices.pdf', [
             'invoice' => $invoice,
             'settings' => $settings,
-            'logoBase64' => $logoBase64,
+            'logoUrl' => $logoSrc,
             'amountInWords' => $this->numberToIndianWords((float) $invoice->grand_total),
             'isHtmlView' => false,
         ])->setPaper('a4', 'portrait')
@@ -800,27 +797,10 @@ class BillingService
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: Company::find($companyId);
 
-        $logoBase64 = $settings->logo_data ?: $company?->logo_data;
-        if (! $logoBase64) {
-            $logoPath = $settings->logo_path ?: $company?->logo_path;
-            if (! $logoPath && $companyId != 1) {
-                $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
-                $logoPath = $defaultSettings?->logo_path;
-                $logoBase64 = $defaultSettings?->logo_data;
-            }
-
-            if (! $logoBase64) {
-                $logoBase64 = Cache::remember("company_logo_b64_{$companyId}", 86400, function () use ($logoPath) {
-                    if ($logoPath && Storage::disk('public')->exists($logoPath)) {
-                        $absPath = Storage::disk('public')->path($logoPath);
-                        $mime = @mime_content_type($absPath) ?: 'image/png';
-
-                        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
-                    }
-
-                    return null;
-                });
-            }
+        $logoUrl = $settings->logo_url ?: $company?->logo_url;
+        if (! $logoUrl && $companyId != 1) {
+            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+            $logoUrl = $defaultSettings?->logo_url;
         }
 
         // Recalculate the live payment sum from the DB to guard against stale model state.
@@ -830,7 +810,7 @@ class BillingService
         // regenerated whenever the invoice or its payments change.
         $cacheKey = "invoice_html_view_{$invoice->id}_{$invoice->updated_at?->timestamp}_{$livePaySum}";
 
-        return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoBase64, $livePaySum) {
+        return Cache::remember($cacheKey, 3600, function () use ($invoice, $settings, $logoUrl, $livePaySum) {
             // Use the live sum for display so the rendered HTML is always accurate.
             $grandTotal = (float) $invoice->grand_total;
             $invoice->paid_amount  = round($livePaySum, 2);
@@ -844,7 +824,7 @@ class BillingService
             return view('invoices.pdf', [
                 'invoice'       => $invoice,
                 'settings'      => $settings,
-                'logoBase64'    => $logoBase64,
+                'logoUrl'       => $logoUrl,
                 'amountInWords' => $this->numberToIndianWords($grandTotal),
                 'isHtmlView'    => true,
             ])->render();

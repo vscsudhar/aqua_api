@@ -49,6 +49,7 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'username' => $this->username,
             'phone' => $this->phone,
+            'profile_image' => $this->profile_image_url ?? $this->profile_image,
             'role' => $this->role,
             'is_active' => (bool) $this->is_active,
             'company_id' => $this->company_id,

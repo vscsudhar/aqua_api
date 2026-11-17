@@ -106,26 +106,16 @@ class CompanySetting extends Model
             $setting->company_name = $company->name;
         }
 
-        // Keep logo_path and logo_data in sync between company and company_settings
+        // Keep logo_path in sync between company and company_settings
         if ($company && !empty($company->logo_path) && empty($setting->logo_path)) {
             $setting->update([
                 'logo_path' => $company->logo_path,
-                'logo_data' => $company->logo_data ?? $setting->logo_data,
             ]);
             $setting->logo_path = $company->logo_path;
-            if (!empty($company->logo_data)) {
-                $setting->logo_data = $company->logo_data;
-            }
         } elseif ($company && !empty($setting->logo_path) && empty($company->logo_path)) {
             $company->update([
                 'logo_path' => $setting->logo_path,
-                'logo_data' => $setting->logo_data ?? $company->logo_data,
             ]);
-        } elseif ($company && !empty($setting->logo_data) && empty($company->logo_data)) {
-            $company->update(['logo_data' => $setting->logo_data]);
-        } elseif ($company && !empty($company->logo_data) && empty($setting->logo_data)) {
-            $setting->update(['logo_data' => $company->logo_data]);
-            $setting->logo_data = $company->logo_data;
         }
 
         return $setting;
