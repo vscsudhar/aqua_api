@@ -708,7 +708,7 @@ class BillingService
      */
     public function renderInvoicePdf(Invoice $invoice)
     {
-        $invoice->load(['company', 'dealer', 'supply', 'items.product', 'payments']);
+        $invoice->loadMissing(['company', 'dealer', 'supply', 'items.product', 'payments']);
         $companyId = $invoice->company_id ?: ($invoice->company?->id ?: 1);
         $settings = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first() 
             ?? CompanySetting::getSettings($companyId);
