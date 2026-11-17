@@ -601,18 +601,42 @@ class BillingService
             $qty = (float) $itemData['quantity'];
             $price = (float) $itemData['unit_price'];
             $discount = isset($itemData['discount_amount']) ? (float) $itemData['discount_amount'] : 0.00;
-            $taxRate = $isWithoutGst
-                ? 0.00
-                : (isset($itemData['tax_rate']) ? (float) $itemData['tax_rate'] : (float) ($product?->tax_rate ?? 0.00));
+            $taxableAmount = round(max(0.0, ($qty * $price) - $discount), 2);
 
-            $calc = $this->computeItemTax($qty, $price, $discount, $taxRate, $isInterstate);
+            if ($isWithoutGst) {
+                $cgstRate = 0.00;
+                $cgstAmount = 0.00;
+                $sgstRate = 0.00;
+                $sgstAmount = 0.00;
+                $igstRate = 0.00;
+                $igstAmount = 0.00;
+                $taxRate = 0.00;
+            } elseif (isset($itemData['cgst_rate']) || isset($itemData['sgst_rate']) || isset($itemData['igst_rate'])) {
+                $cgstRate = (float) ($itemData['cgst_rate'] ?? 0.00);
+                $sgstRate = (float) ($itemData['sgst_rate'] ?? 0.00);
+                $igstRate = (float) ($itemData['igst_rate'] ?? 0.00);
+                $cgstAmount = round($taxableAmount * ($cgstRate / 100), 2);
+                $sgstAmount = round($taxableAmount * ($sgstRate / 100), 2);
+                $igstAmount = round($taxableAmount * ($igstRate / 100), 2);
+                $taxRate = $igstRate > 0 ? $igstRate : ($cgstRate + $sgstRate);
+            } else {
+                $taxRate = isset($itemData['tax_rate']) ? (float) $itemData['tax_rate'] : (float) ($product?->tax_rate ?? 0.00);
+                $calc = $this->computeItemTax($qty, $price, $discount, $taxRate, $isInterstate);
+                $cgstRate = $calc['cgst_rate'];
+                $cgstAmount = $calc['cgst_amount'];
+                $sgstRate = $calc['sgst_rate'];
+                $sgstAmount = $calc['sgst_amount'];
+                $igstRate = $calc['igst_rate'];
+                $igstAmount = $calc['igst_amount'];
+            }
+            $lineTotal = round($taxableAmount + $cgstAmount + $sgstAmount + $igstAmount, 2);
 
             $subtotal += round($qty * $price, 2);
             $discountTotal += $discount;
-            $taxableAmountTotal += $calc['taxable_amount'];
-            $cgstTotal += $calc['cgst_amount'];
-            $sgstTotal += $calc['sgst_amount'];
-            $igstTotal += $calc['igst_amount'];
+            $taxableAmountTotal += $taxableAmount;
+            $cgstTotal += $cgstAmount;
+            $sgstTotal += $sgstAmount;
+            $igstTotal += $igstAmount;
 
             InvoiceItem::create([
                 'invoice_id' => $invoice->id,
@@ -623,17 +647,23 @@ class BillingService
                 'unit' => $itemData['unit'] ?? ($product?->unit ?? 'Unit'),
                 'unit_price' => $price,
                 'discount_amount' => $discount,
-                'taxable_amount' => $calc['taxable_amount'],
-                'tax_rate' => $calc['tax_rate'],
-                'cgst_rate' => $calc['cgst_rate'],
-                'cgst_amount' => $calc['cgst_amount'],
-                'sgst_rate' => $calc['sgst_rate'],
-                'sgst_amount' => $calc['sgst_amount'],
-                'igst_rate' => $calc['igst_rate'],
-                'igst_amount' => $calc['igst_amount'],
-                'line_total' => $calc['line_total'],
+                'taxable_amount' => $taxableAmount,
+                'tax_rate' => $taxRate,
+                'cgst_rate' => $cgstRate,
+                'cgst_amount' => $cgstAmount,
+                'sgst_rate' => $sgstRate,
+                'sgst_amount' => $sgstAmount,
+                'igst_rate' => $igstRate,
+                'igst_amount' => $igstAmount,
+                'line_total' => $lineTotal,
                 'notes' => $itemData['notes'] ?? null,
             ]);
+        }
+
+        if ($igstTotal > 0 && $cgstTotal == 0 && $sgstTotal == 0) {
+            $invoice->is_interstate = true;
+        } elseif ($cgstTotal > 0 || $sgstTotal > 0) {
+            $invoice->is_interstate = false;
         }
 
         // Additional Taxes (for IGST mode)
