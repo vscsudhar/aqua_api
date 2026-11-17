@@ -130,7 +130,15 @@ class InvoiceController extends Controller
             'items.*.unit' => ['nullable', 'string', 'max:50'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.taxable_amount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.cgst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.cgst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.sgst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.sgst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.igst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.igst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.line_total' => ['nullable', 'numeric', 'min:0'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
         ]);
 
@@ -203,7 +211,15 @@ class InvoiceController extends Controller
             'items.*.unit' => ['nullable', 'string', 'max:50'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.taxable_amount' => ['nullable', 'numeric', 'min:0'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.cgst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.cgst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.sgst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.sgst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.igst_rate' => ['nullable', 'numeric', 'min:0'],
+            'items.*.igst_amount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.line_total' => ['nullable', 'numeric', 'min:0'],
             'items.*.notes' => ['nullable', 'string', 'max:255'],
         ]);
 

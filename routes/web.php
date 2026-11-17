@@ -7,6 +7,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/invoices', function () {
+    return redirect('/');
+});
+
 Route::get('/invoices/{id}', [InvoiceController::class, 'showHtml'])->name('invoices.show-direct');
 Route::get('/invoices/{id}/html', [InvoiceController::class, 'showHtml'])->name('invoices.show-html');
 Route::get('/invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf'])->name('invoices.download-pdf');

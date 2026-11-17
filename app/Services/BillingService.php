@@ -744,17 +744,20 @@ class BillingService
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: Company::find($companyId);
 
-        $logoBase64 = null;
-        $logoPath = $settings->logo_path ?: $company?->logo_path;
-        if (! $logoPath && $companyId != 1) {
-            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
-            $logoPath = $defaultSettings?->logo_path;
-        }
+        $logoBase64 = $settings->logo_data ?: $company?->logo_data;
+        if (! $logoBase64) {
+            $logoPath = $settings->logo_path ?: $company?->logo_path;
+            if (! $logoPath && $companyId != 1) {
+                $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+                $logoPath = $defaultSettings?->logo_path;
+                $logoBase64 = $defaultSettings?->logo_data;
+            }
 
-        if ($logoPath && Storage::disk('public')->exists($logoPath)) {
-            $absPath = Storage::disk('public')->path($logoPath);
-            $mime = @mime_content_type($absPath) ?: 'image/png';
-            $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+            if (! $logoBase64 && $logoPath && Storage::disk('public')->exists($logoPath)) {
+                $absPath = Storage::disk('public')->path($logoPath);
+                $mime = @mime_content_type($absPath) ?: 'image/png';
+                $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+            }
         }
 
         $pdf = Pdf::loadView('invoices.pdf', [
@@ -793,22 +796,28 @@ class BillingService
             ?? CompanySetting::getSettings($companyId);
         $company = $invoice->company ?: Company::find($companyId);
 
-        $logoPath = $settings->logo_path ?: $company?->logo_path;
-        if (! $logoPath && $companyId != 1) {
-            $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
-            $logoPath = $defaultSettings?->logo_path;
-        }
-
-        $logoBase64 = Cache::remember("company_logo_b64_{$companyId}", 86400, function () use ($logoPath) {
-            if ($logoPath && Storage::disk('public')->exists($logoPath)) {
-                $absPath = Storage::disk('public')->path($logoPath);
-                $mime = @mime_content_type($absPath) ?: 'image/png';
-
-                return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+        $logoBase64 = $settings->logo_data ?: $company?->logo_data;
+        if (! $logoBase64) {
+            $logoPath = $settings->logo_path ?: $company?->logo_path;
+            if (! $logoPath && $companyId != 1) {
+                $defaultSettings = CompanySetting::withoutGlobalScopes()->where('company_id', 1)->first();
+                $logoPath = $defaultSettings?->logo_path;
+                $logoBase64 = $defaultSettings?->logo_data;
             }
 
-            return null;
-        });
+            if (! $logoBase64) {
+                $logoBase64 = Cache::remember("company_logo_b64_{$companyId}", 86400, function () use ($logoPath) {
+                    if ($logoPath && Storage::disk('public')->exists($logoPath)) {
+                        $absPath = Storage::disk('public')->path($logoPath);
+                        $mime = @mime_content_type($absPath) ?: 'image/png';
+
+                        return 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($absPath));
+                    }
+
+                    return null;
+                });
+            }
+        }
 
         // Recalculate the live payment sum from the DB to guard against stale model state.
         $livePaySum = (float) $invoice->payments()->sum('amount');

@@ -70,6 +70,9 @@ class InvoiceResource extends JsonResource
                 'gstin' => $this->dealer->gstin,
             ]),
             'created_by' => $this->creator?->name,
+            'html_url' => url("invoices/{$this->id}"),
+            'pdf_url' => url("invoices/{$this->id}/pdf"),
+            'print_url' => url("invoices/{$this->id}/print"),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

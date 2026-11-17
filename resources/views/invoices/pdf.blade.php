@@ -506,9 +506,9 @@
                         <th style="width: {{ $isWithoutGst ? '10%' : '8.5%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Rate</th>
                         <th style="width: {{ $isWithoutGst ? '11%' : '10%' }}; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: right; border-right: 1pt solid #1e293b;">Amount</th>
                         @if(!$isWithoutGst)
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST (% / ₹)</th>
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST (% / ₹)</th>
-                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST (% / ₹)</th>
+                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">SGST</th>
+                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">CGST</th>
+                        <th style="width: 11%; padding: 4.5pt 2pt; font-size: 8.5pt; font-weight: bold; text-align: center; border-right: 1pt solid #1e293b;">IGST</th>
                         @endif
                         <th style="width: {{ $isWithoutGst ? '11%' : '11%' }}; padding: 4.5pt 3pt; font-size: 8.5pt; font-weight: bold; text-align: right;">Total Amount</th>
                     </tr>
@@ -571,17 +571,20 @@
                         <td style="padding: 4pt 2pt; text-align: right; border-right: 1pt solid #1e293b;">₹{{ formatInvoiceAmount($item->unit_price) }}</td>
                         <td style="padding: 4pt 2pt; text-align: right; border-right: 1pt solid #1e293b;">₹{{ formatInvoiceAmount($item->taxable_amount) }}</td>
                         @if(!$isWithoutGst)
-                            <!-- SGST Column (% / ₹) -->
-                            <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap;">
-                                {{ $sgstRateStr }}% / ₹{{ formatInvoiceAmount($itSgstAmt) }}
+                            <!-- SGST Column -->
+                            <td style="padding: 3pt 2pt; text-align: center; border-right: 1pt solid #1e293b; line-height: 1.2;">
+                                <div style="font-weight: bold; font-size: 8.5pt;">{{ $itSgstAmt > 0 ? '₹' . number_format($itSgstAmt, 2) : '₹0.00' }}</div>
+                                <div style="font-size: 7.5pt; color: #475569;">{{ $itSgstRate > 0 ? $sgstRateStr . '%' : '0%' }}</div>
                             </td>
-                            <!-- CGST Column (% / ₹) -->
-                            <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap;">
-                                {{ $cgstRateStr }}% / ₹{{ formatInvoiceAmount($itCgstAmt) }}
+                            <!-- CGST Column -->
+                            <td style="padding: 3pt 2pt; text-align: center; border-right: 1pt solid #1e293b; line-height: 1.2;">
+                                <div style="font-weight: bold; font-size: 8.5pt;">{{ $itCgstAmt > 0 ? '₹' . number_format($itCgstAmt, 2) : '₹0.00' }}</div>
+                                <div style="font-size: 7.5pt; color: #475569;">{{ $itCgstRate > 0 ? $cgstRateStr . '%' : '0%' }}</div>
                             </td>
-                            <!-- IGST Column (% / ₹) -->
-                            <td style="padding: 4pt 2pt; text-align: center; border-right: 1pt solid #1e293b; white-space: nowrap;">
-                                {{ $igstRateStr }}% / ₹{{ formatInvoiceAmount($itIgstAmt) }}
+                            <!-- IGST Column -->
+                            <td style="padding: 3pt 2pt; text-align: center; border-right: 1pt solid #1e293b; line-height: 1.2;">
+                                <div style="font-weight: bold; font-size: 8.5pt;">{{ $itIgstAmt > 0 ? '₹' . number_format($itIgstAmt, 2) : '₹0.00' }}</div>
+                                <div style="font-size: 7.5pt; color: #475569;">{{ $itIgstRate > 0 ? $igstRateStr . '%' : '0%' }}</div>
                             </td>
                         @endif
                         <td style="padding: 4pt 3pt; text-align: right; font-weight: bold;">₹{{ formatInvoiceAmount($item->line_total) }}</td>

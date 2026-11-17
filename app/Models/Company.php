@@ -19,6 +19,7 @@ class Company extends Model
         'name',
         'contact_person',
         'logo_path',
+        'logo_data',
         'plan_id',
         'expires_at',
         'status',
