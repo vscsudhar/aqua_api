@@ -288,7 +288,7 @@
                             </td>
                             <td style="font-weight:bold;background-color:#f1f5f9;">
                                 @if($detailed)
-                                    <b>{{ $dData['totals']['cane_qty'] }} cans</b>
+                                    <b>{{ $dData['totals']['cane_qty'] }}</b>
                                     @if($dData['totals']['filling_amount'] > 0)
                                         <br><span style="font-size:6.0pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
                                     @endif
@@ -300,7 +300,7 @@
                                         <br><span style="color:#15803d;font-size:5.8pt;font-weight:bold;">₹{{ number_format($dData['totals']['payments_received'], 0) }}</span>
                                     @endif
                                 @else
-                                    {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
+                                    {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'] : '-' }}
                                     @if(!empty($dData['totals']['payment_breakdown']))
                                         @foreach($dData['totals']['payment_breakdown'] as $pb)
                                             <br><span style="color:{{ $pb['color'] }};font-size:5.8pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>
@@ -487,7 +487,7 @@
                             </td>
                             <td style="font-weight:bold;background-color:#f1f5f9;">
                                 @if($detailed)
-                                    <b>{{ $dData['totals']['cane_qty'] }} cans</b>
+                                    <b>{{ $dData['totals']['cane_qty'] }}</b>
                                     @if($dData['totals']['filling_amount'] > 0)
                                         <br><span style="font-size:6.0pt;color:#003366;">₹{{ number_format($dData['totals']['filling_amount'], 0) }}</span>
                                     @endif
@@ -499,7 +499,7 @@
                                         <br><span style="color:#15803d;font-size:5.8pt;font-weight:bold;">₹{{ number_format($dData['totals']['payments_received'], 0) }}</span>
                                     @endif
                                 @else
-                                    {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'].' cans' : '-' }}
+                                    {{ $dData['totals']['cane_qty'] > 0 ? $dData['totals']['cane_qty'] : '-' }}
                                     @if(!empty($dData['totals']['payment_breakdown']))
                                         @foreach($dData['totals']['payment_breakdown'] as $pb)
                                             <br><span style="color:{{ $pb['color'] }};font-size:5.8pt;font-weight:bold;white-space:nowrap;">{{ $pb['method'] }}: ₹{{ number_format(round($pb['amount'])) }}</span>

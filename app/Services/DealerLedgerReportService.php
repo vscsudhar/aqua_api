@@ -924,7 +924,7 @@ class DealerLedgerReportService
 
                 // Total
                 $tEntry = $dayData['totals'];
-                $sheet->setCellValue("{$totalColLetter}{$row}", "{$tEntry['cane_qty']} cans\n₹".number_format($tEntry['filling_amount'], 2));
+                $sheet->setCellValue("{$totalColLetter}{$row}", "{$tEntry['cane_qty']}\n₹".number_format($tEntry['filling_amount'], 2));
                 $sheet->getStyle("{$totalColLetter}{$row}")->getAlignment()->setWrapText(true);
 
                 if ($d % 2 == 0) {
