@@ -6,10 +6,14 @@ use App\Models\BottleOtherEntry;
 use App\Models\Company;
 use App\Models\DamagedProduct;
 use App\Models\DealerSupply;
+use App\Models\DealerSupplyItem;
+use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\Purchase;
+use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -613,6 +617,9 @@ class BottleLedgerService
 
                     if ($resolved === $productKey) {
                         $transactions[] = [
+                            'id' => (int) $item->id,
+                            'supply_id' => (int) $supply->id,
+                            'entry_type' => 'dealer_supply_item',
                             'party_name' => $supply->dealer?->name ?? 'Dealer #'.$supply->dealer_id,
                             'reference_no' => $supply->supply_no,
                             'date' => Carbon::parse($supply->supply_date)->format('d/m/Y'),
@@ -641,6 +648,9 @@ class BottleLedgerService
 
                 if ($resolved === $productKey) {
                     $transactions[] = [
+                        'id' => (int) $oth->id,
+                        'supply_id' => null,
+                        'entry_type' => 'others_entry',
                         'party_name' => 'Others Entry' . ($oth->notes ? ' (' . $oth->notes . ')' : ''),
                         'reference_no' => 'OTH-' . $oth->id,
                         'date' => Carbon::parse($oth->entry_date)->format('d/m/Y'),
@@ -933,5 +943,123 @@ class BottleLedgerService
         ]);
 
         return $pdf;
+    }
+
+    /**
+     * Delete a bottle purchase entry (Dealer Supply Item or Others Entry)
+     * and synchronize Daily Collection, Other Statement, and Bottle Ledger.
+     */
+    public function deleteBottlePurchaseEntry(int $companyId, string $entryType, int $id, ?User $user = null): array
+    {
+        return DB::transaction(function () use ($companyId, $entryType, $id, $user) {
+            if ($entryType === 'others_entry') {
+                $entry = BottleOtherEntry::where('company_id', $companyId)->findOrFail($id);
+
+                $deletedData = [
+                    'id' => $entry->id,
+                    'entry_type' => 'others_entry',
+                    'date' => Carbon::parse($entry->entry_date)->toDateString(),
+                    'product_id' => $entry->product_id,
+                    'quantity' => (int) $entry->quantity,
+                    'amount' => (float) $entry->amount,
+                    'total_amount' => (float) $entry->total_amount,
+                ];
+
+                $entry->delete();
+
+                return [
+                    'success' => true,
+                    'message' => 'Others bottle purchase entry deleted successfully.',
+                    'deleted' => $deletedData,
+                ];
+            }
+
+            if ($entryType === 'dealer_supply_item') {
+                $item = DealerSupplyItem::with(['supply.dealer', 'product'])->findOrFail($id);
+                $supply = $item->supply;
+
+                if (! $supply || (int) $supply->company_id !== (int) $companyId) {
+                    throw new \Exception('Supply item does not belong to the active company.');
+                }
+
+                $deletedData = [
+                    'id' => $item->id,
+                    'supply_id' => $supply->id,
+                    'supply_no' => $supply->supply_no,
+                    'entry_type' => 'dealer_supply_item',
+                    'date' => Carbon::parse($supply->supply_date)->toDateString(),
+                    'product_id' => $item->product_id,
+                    'quantity' => (float) $item->quantity,
+                    'unit_price' => (float) $item->unit_price,
+                    'total_amount' => (float) ($item->total_amount ?? $item->line_total ?? ($item->quantity * $item->unit_price)),
+                ];
+
+                $remainingItemsCount = $supply->items()->where('id', '!=', $item->id)->count();
+
+                if ($remainingItemsCount === 0) {
+                    // This was the only item in the supply: delete the full supply and linked records
+                    app(DailyCollectionService::class)->deleteSupply($supply, $user);
+                } else {
+                    // Supply has other items remaining: reverse stock issue for this item, delete item, recalculate supply
+                    $mov = InventoryMovement::where('reference_type', 'dealer_supply')
+                        ->where('reference_id', $supply->id)
+                        ->where('product_id', $item->product_id)
+                        ->where('movement_type', 'supply_out')
+                        ->first();
+
+                    if ($mov) {
+                        $prod = Product::find($mov->product_id);
+                        if ($prod && $prod->track_stock) {
+                            app(InventoryService::class)->recordMovement(
+                                productOrId: $prod,
+                                movementType: 'supply_out',
+                                quantity: (float) $item->quantity,
+                                signedQuantity: (float) $item->quantity, // return back to stock
+                                referenceType: 'dealer_supply',
+                                referenceId: $supply->id,
+                                notes: "Stock returned from bottle purchase deletion in supply: #{$supply->supply_no}",
+                                userId: $user?->id,
+                            );
+                        }
+                        if ($mov->quantity <= $item->quantity) {
+                            $mov->delete();
+                        } else {
+                            $mov->quantity = (float) ($mov->quantity - $item->quantity);
+                            $mov->save();
+                        }
+                    }
+
+                    // Delete the item
+                    $item->delete();
+
+                    // Recalculate supply subtotal and total amount
+                    $newSubtotal = (float) $supply->items()->sum('total_amount');
+                    $supply->subtotal = $newSubtotal;
+                    $supply->total_amount = round(max(0.0, $newSubtotal + $supply->adjustment_amount - $supply->discount_amount), 2);
+                    $supply->outstanding_amount = round(max(0.0, $supply->total_amount - $supply->paid_amount), 2);
+
+                    if ($supply->paid_amount >= $supply->total_amount && $supply->total_amount > 0) {
+                        $supply->payment_status = 'paid';
+                    } elseif ($supply->paid_amount > 0) {
+                        $supply->payment_status = 'partially_paid';
+                    } else {
+                        $supply->payment_status = 'unpaid';
+                    }
+
+                    $supply->save();
+
+                    // Resynchronize supply debit ledger entry
+                    $supply->syncLedgerEntry($user?->id);
+                }
+
+                return [
+                    'success' => true,
+                    'message' => 'Dealer bottle purchase entry deleted successfully and Daily Collection synchronized.',
+                    'deleted' => $deletedData,
+                ];
+            }
+
+            throw new \InvalidArgumentException("Invalid entry type '{$entryType}'. Must be 'dealer_supply_item' or 'others_entry'.");
+        });
     }
 }

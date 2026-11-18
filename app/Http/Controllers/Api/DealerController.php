@@ -191,8 +191,26 @@ class DealerController extends Controller
             return $this->errorResponse('Dealer not found.', 404);
         }
 
-        $startDate = $request->query('start_date');
-        $endDate = $request->query('end_date');
+        if ($request->filled('month') && $request->filled('year')) {
+            $selYear = (int) $request->query('year');
+            $selMonth = (int) $request->query('month');
+            $startDate = \Carbon\Carbon::createFromDate($selYear, $selMonth, 1, 'Asia/Kolkata')->startOfMonth()->toDateString();
+            $endDate = \Carbon\Carbon::createFromDate($selYear, $selMonth, 1, 'Asia/Kolkata')->endOfMonth()->toDateString();
+        } else {
+            $startDate = $request->query('start_date');
+            $endDate = $request->query('end_date');
+            if ($startDate) {
+                $cStart = \Carbon\Carbon::parse($startDate);
+                $selYear = (int) $cStart->year;
+                $selMonth = (int) $cStart->month;
+            } else {
+                $now = \Carbon\Carbon::now('Asia/Kolkata');
+                $selYear = (int) $now->year;
+                $selMonth = (int) $now->month;
+                $startDate = $now->copy()->startOfMonth()->toDateString();
+                $endDate = $now->copy()->endOfMonth()->toDateString();
+            }
+        }
 
         // Base opening balance of dealer
         $baseOpening = (float) $dealer->opening_balance;
@@ -324,7 +342,9 @@ class DealerController extends Controller
         }
 
         // Payments breakdown (P1 and P2 include filling/refill payments only, strictly excluding bottle amounts)
-        $paymentsQuery = \App\Models\DealerPayment::with(['supply.items.product'])->where('dealer_id', $id);
+        $paymentsQuery = \App\Models\DealerPayment::with(['supply.items.product', 'details'])
+            ->where('dealer_id', $id)
+            ->where('status', '!=', 'cancelled');
         if ($startDate) {
             $paymentsQuery->where('payment_date', '>=', $startDate);
         }
@@ -352,6 +372,173 @@ class DealerController extends Controller
             }
         }
 
+        // --- Monthly Statement Ledger Matrix (Date, Filling, Products, Cash, UPI) ---
+        // 1. Resolve eligible product catalog columns (excluding invoice-only, excluding refill)
+        $companyId = $dealer->company_id;
+        $catalogProducts = \App\Models\Product::where('company_id', $companyId)
+            ->where(function ($q) {
+                $q->whereNull('for_invoice')->orWhere('for_invoice', false);
+            })
+            ->where(function ($q) {
+                $q->whereNull('product_type')->orWhereRaw('LOWER(TRIM(product_type)) != ?', ['refill']);
+            })
+            ->where('is_active', true)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $productsMap = [];
+        foreach ($catalogProducts as $cp) {
+            if (strtolower(trim((string) $cp->product_type)) === 'refill') {
+                continue;
+            }
+            $productsMap[$cp->id] = [
+                'id' => $cp->id,
+                'name' => $cp->name,
+                'sku' => $cp->sku,
+                'product_type' => $cp->product_type ?? 'normal',
+            ];
+        }
+
+        // 2. Accumulate daily transactions
+        $dailyData = [];
+
+        foreach ($supplies as $sup) {
+            $dateKey = \Carbon\Carbon::parse($sup->supply_date)->toDateString();
+            if (! isset($dailyData[$dateKey])) {
+                $dailyData[$dateKey] = [
+                    'date_raw' => $dateKey,
+                    'filling' => 0,
+                    'products' => [],
+                    'cash' => 0.0,
+                    'upi' => 0.0,
+                ];
+            }
+
+            foreach ($sup->items as $item) {
+                $p = $item->product;
+                $pId = $p?->id ?? $item->product_id;
+                $pName = $p?->name ?? $item->notes ?? '';
+                $pSku = $p?->sku ?? '';
+                $pUnit = $item->unit ?? $p?->unit ?? '';
+                $pType = $p?->product_type;
+                $qty = (float) $item->quantity;
+
+                $isRefill = strtolower(trim((string) $pType)) === 'refill';
+
+                if ($isRefill) {
+                    $dailyData[$dateKey]['filling'] += (int) $qty;
+                } else {
+                    if ($pId) {
+                        if (! isset($productsMap[$pId]) && $p) {
+                            $productsMap[$pId] = [
+                                'id' => $pId,
+                                'name' => $pName,
+                                'sku' => $pSku,
+                                'product_type' => $pType ?? 'normal',
+                            ];
+                        }
+                        if (! isset($dailyData[$dateKey]['products'][$pId])) {
+                            $dailyData[$dateKey]['products'][$pId] = 0;
+                        }
+                        $dailyData[$dateKey]['products'][$pId] += (int) $qty;
+                    }
+                }
+            }
+        }
+
+        foreach ($dealerPayments as $pay) {
+            $dateKey = \Carbon\Carbon::parse($pay->payment_date)->toDateString();
+            if (! isset($dailyData[$dateKey])) {
+                $dailyData[$dateKey] = [
+                    'date_raw' => $dateKey,
+                    'filling' => 0,
+                    'products' => [],
+                    'cash' => 0.0,
+                    'upi' => 0.0,
+                ];
+            }
+
+            if ($pay->details && $pay->details->count() > 0) {
+                foreach ($pay->details as $det) {
+                    $mode = strtolower(trim($det->payment_mode ?? ''));
+                    $amt = (float) $det->amount;
+                    if ($mode === 'cash') {
+                        $dailyData[$dateKey]['cash'] += $amt;
+                    } elseif ($mode === 'upi') {
+                        $dailyData[$dateKey]['upi'] += $amt;
+                    }
+                }
+            } else {
+                $mode = strtolower(trim($pay->payment_mode ?? $pay->payment_method ?? 'cash'));
+                $amt = (float) $pay->amount;
+                if ($mode === 'cash') {
+                    $dailyData[$dateKey]['cash'] += $amt;
+                } elseif ($mode === 'upi') {
+                    $dailyData[$dateKey]['upi'] += $amt;
+                }
+            }
+        }
+
+        ksort($dailyData);
+
+        $monthlyLedgerRows = [];
+        $totalFilling = 0;
+        $totalProductCounts = [];
+        foreach ($productsMap as $pId => $prod) {
+            $totalProductCounts[$pId] = 0;
+        }
+        $totalCash = 0.0;
+        $totalUpi = 0.0;
+
+        foreach ($dailyData as $dateKey => $data) {
+            $filling = $data['filling'];
+            $cash = round($data['cash'], 2);
+            $upi = round($data['upi'], 2);
+            $prodCounts = $data['products'];
+
+            $hasActivity = ($filling > 0) || ($cash > 0) || ($upi > 0);
+            if (! $hasActivity) {
+                foreach ($prodCounts as $q) {
+                    if ($q > 0) {
+                        $hasActivity = true;
+                        break;
+                    }
+                }
+            }
+
+            if (! $hasActivity) {
+                continue;
+            }
+
+            $cDate = \Carbon\Carbon::parse($dateKey);
+            $formattedDate = $cDate->format('d/m/Y');
+
+            $totalFilling += $filling;
+            $totalCash += $cash;
+            $totalUpi += $upi;
+
+            foreach ($productsMap as $pId => $pInfo) {
+                $q = $prodCounts[$pId] ?? 0;
+                $totalProductCounts[$pId] += $q;
+            }
+
+            $monthlyLedgerRows[] = [
+                'date' => $formattedDate,
+                'date_raw' => $dateKey,
+                'filling' => $filling > 0 ? $filling : null,
+                'products' => $prodCounts,
+                'cash' => $cash > 0 ? $cash : null,
+                'upi' => $upi > 0 ? $upi : null,
+            ];
+        }
+
+        $monthlyTotals = [
+            'filling' => $totalFilling,
+            'products' => $totalProductCounts,
+            'cash' => round($totalCash, 2),
+            'upi' => round($totalUpi, 2),
+        ];
+
         $companySetting = \App\Models\CompanySetting::first();
 
         return $this->successResponse([
@@ -378,6 +565,8 @@ class DealerController extends Controller
             'period' => [
                 'start_date' => $startDate,
                 'end_date' => $endDate,
+                'month' => $selMonth,
+                'year' => $selYear,
             ],
             'summary' => [
                 'opening_balance' => round($effectiveOpeningBalance, 2),
@@ -400,6 +589,9 @@ class DealerController extends Controller
                 'p2_payments' => round($p2Payments, 2),
             ],
             'transactions' => $formattedEntries,
+            'products' => array_values($productsMap),
+            'monthly_ledger' => $monthlyLedgerRows,
+            'monthly_totals' => $monthlyTotals,
         ], 'Dealer statement generated successfully.');
     }
 }

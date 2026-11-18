@@ -212,4 +212,24 @@ class BottleLedgerController extends Controller
 
         return $pdf->download($filename);
     }
+
+    /**
+     * Delete a bottle purchase entry from Dealer Bottle Purchase drill-down,
+     * synchronizing Daily Collection and Other Statement.
+     */
+    public function destroyTransaction(Request $request, string $type, int $id): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        if (! in_array($type, ['dealer_supply_item', 'others_entry'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid transaction type specified.',
+            ], 422);
+        }
+
+        $result = $this->bottleLedgerService->deleteBottlePurchaseEntry($companyId, $type, $id, $request->user());
+
+        return response()->json($result);
+    }
 }
