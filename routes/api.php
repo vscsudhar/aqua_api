@@ -254,6 +254,14 @@ Route::prefix('v1')->group(function () {
             Route::get('/', [BottleLedgerController::class, 'index']);
             Route::get('/drilldown', [BottleLedgerController::class, 'drilldown']);
             Route::get('/pdf', [BottleLedgerController::class, 'exportPdf']);
+
+            // Others Bottle Entry & Others Statement
+            Route::get('/products', [BottleLedgerController::class, 'getProducts']);
+            Route::get('/others', [BottleLedgerController::class, 'getOthersStatement']);
+            Route::post('/others', [BottleLedgerController::class, 'storeOtherEntry']);
+            Route::put('/others/{id}', [BottleLedgerController::class, 'updateOtherEntry']);
+            Route::delete('/others/{id}', [BottleLedgerController::class, 'destroyOtherEntry']);
+            Route::get('/others/pdf', [BottleLedgerController::class, 'exportOthersPdf']);
         });
         // use Illuminate\Support\Facades\Route;
 

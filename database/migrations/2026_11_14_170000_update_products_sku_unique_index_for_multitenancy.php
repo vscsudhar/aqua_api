@@ -11,19 +11,21 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('products', function (Blueprint $table) {
-            try {
+        try {
+            Schema::table('products', function (Blueprint $table) {
                 $table->dropUnique('products_sku_unique');
-            } catch (\Throwable $e) {
-                // Ignore if already dropped
-            }
+            });
+        } catch (\Throwable $e) {
+            // Ignore if already dropped
+        }
 
-            try {
+        try {
+            Schema::table('products', function (Blueprint $table) {
                 $table->unique(['company_id', 'sku'], 'products_company_id_sku_unique');
-            } catch (\Throwable $e) {
-                // Ignore if already created
-            }
-        });
+            });
+        } catch (\Throwable $e) {
+            // Ignore if already created
+        }
     }
 
     /**

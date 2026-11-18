@@ -99,4 +99,117 @@ class BottleLedgerController extends Controller
 
         return $pdf->download($filename);
     }
+
+    /**
+     * Get eligible Without Refill products for Others Entry dropdown.
+     */
+    public function getProducts(Request $request): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+        $products = $this->bottleLedgerService->getWithoutRefillProducts($companyId);
+
+        return response()->json([
+            'success' => true,
+            'data' => $products,
+        ]);
+    }
+
+    /**
+     * Get Others Statement date-wise and entries list for a month.
+     */
+    public function getOthersStatement(Request $request): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $now = Carbon::now('Asia/Kolkata');
+        $year = (int) $request->input('year', $now->year);
+        $month = (int) $request->input('month', $now->month);
+
+        $statement = $this->bottleLedgerService->getOthersStatement($companyId, $year, $month);
+
+        return response()->json([
+            'success' => true,
+            'data' => $statement,
+        ]);
+    }
+
+    /**
+     * Record a new Bottle Other Entry.
+     */
+    public function storeOtherEntry(Request $request): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $validated = $request->validate([
+            'entry_date' => ['required', 'date'],
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'quantity' => ['required', 'integer', 'min:1'],
+            'amount' => ['required', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $entry = $this->bottleLedgerService->createOtherEntry($companyId, $validated, Auth::id());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Others bottle entry created successfully.',
+            'data' => $entry->load('product'),
+        ], 201);
+    }
+
+    /**
+     * Update an existing Bottle Other Entry.
+     */
+    public function updateOtherEntry(Request $request, int $id): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $validated = $request->validate([
+            'entry_date' => ['sometimes', 'required', 'date'],
+            'product_id' => ['sometimes', 'required', 'integer', 'exists:products,id'],
+            'quantity' => ['sometimes', 'required', 'integer', 'min:1'],
+            'amount' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $entry = $this->bottleLedgerService->updateOtherEntry($companyId, $id, $validated, Auth::id());
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Others bottle entry updated successfully.',
+            'data' => $entry->load('product'),
+        ]);
+    }
+
+    /**
+     * Delete an existing Bottle Other Entry.
+     */
+    public function destroyOtherEntry(Request $request, int $id): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $this->bottleLedgerService->deleteOtherEntry($companyId, $id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Others bottle entry deleted successfully.',
+        ]);
+    }
+
+    /**
+     * Export Others Statement A4 portrait PDF.
+     */
+    public function exportOthersPdf(Request $request)
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $now = Carbon::now('Asia/Kolkata');
+        $year = (int) $request->input('year', $now->year);
+        $month = (int) $request->input('month', $now->month);
+
+        $pdf = $this->bottleLedgerService->generateOthersStatementPdf($companyId, $year, $month);
+        $filename = sprintf('bottle_others_statement_%04d_%02d.pdf', $year, $month);
+
+        return $pdf->download($filename);
+    }
 }

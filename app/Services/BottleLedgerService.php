@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BottleOtherEntry;
 use App\Models\Company;
 use App\Models\DamagedProduct;
 use App\Models\DealerSupply;
@@ -155,6 +156,12 @@ class BottleLedgerService
             ->whereBetween('damage_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->get();
 
+        // 5b. Fetch bottle other entries for the month
+        $othersEntries = BottleOtherEntry::with('product')
+            ->where('company_id', $companyId)
+            ->whereBetween('entry_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->get();
+
         // 6. Initialize daily maps
         $dealerDaily = [];
         $supplierDaily = [];
@@ -218,6 +225,31 @@ class BottleLedgerService
                 $dealerDaily[$dateStr]['quantities'][$key] += $qty;
                 $dealerDaily[$dateStr]['total_amount'] += $amt;
             }
+        }
+
+        // 7b. Populate Bottle Others Entries into Dealer Bottle Purchase table
+        foreach ($othersEntries as $oth) {
+            $dateStr = Carbon::parse($oth->entry_date)->toDateString();
+            if (! isset($dealerDaily[$dateStr])) {
+                continue;
+            }
+
+            $pId = $oth->product_id;
+            $pName = $oth->product?->name ?? '';
+            $pSku = $oth->product?->sku ?? '';
+            $pType = $oth->product?->product_type ?? null;
+
+            $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+            if (! $key || ! in_array($key, $productKeys, true)) {
+                continue;
+            }
+
+            $amt = (float) $oth->total_amount;
+            $qty = (float) $oth->quantity;
+
+            $dealerDaily[$dateStr]['products'][$key] += $amt;
+            $dealerDaily[$dateStr]['quantities'][$key] += $qty;
+            $dealerDaily[$dateStr]['total_amount'] += $amt;
         }
 
         // 8. Populate Supplier Purchases
@@ -492,6 +524,23 @@ class BottleLedgerService
             }
         }
 
+        $priorOthers = BottleOtherEntry::with(['product'])
+            ->where('company_id', $companyId)
+            ->where('entry_date', '<', $beforeDate)
+            ->get();
+
+        foreach ($priorOthers as $oth) {
+            $pId = $oth->product_id;
+            $pName = $oth->product?->name ?? '';
+            $pSku = $oth->product?->sku ?? '';
+            $pType = $oth->product?->product_type ?? null;
+
+            $key = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+            if ($key && isset($totals[$key])) {
+                $totals[$key] += (float) $oth->quantity;
+            }
+        }
+
         return $totals;
     }
 
@@ -575,6 +624,33 @@ class BottleLedgerService
                             'notes' => $supply->notes ?? '',
                         ];
                     }
+                }
+            }
+
+            $others = BottleOtherEntry::with('product')
+                ->where('company_id', $companyId)
+                ->whereDate('entry_date', $date)
+                ->get();
+
+            foreach ($others as $oth) {
+                $pId = $oth->product_id;
+                $pName = $oth->product?->name ?? '';
+                $pSku = $oth->product?->sku ?? '';
+                $pType = $oth->product?->product_type ?? null;
+                $resolved = $this->resolveProductKeyForCompany($pId, $pName, $pSku, $pType, $idToKey, $nameToKey, $skuToKey);
+
+                if ($resolved === $productKey) {
+                    $transactions[] = [
+                        'party_name' => 'Others Entry' . ($oth->notes ? ' (' . $oth->notes . ')' : ''),
+                        'reference_no' => 'OTH-' . $oth->id,
+                        'date' => Carbon::parse($oth->entry_date)->format('d/m/Y'),
+                        'product_key' => $productKey,
+                        'product_name' => $pName ?: $productKey,
+                        'quantity' => (float) $oth->quantity,
+                        'unit_price' => (float) $oth->amount,
+                        'total_amount' => (float) $oth->total_amount,
+                        'notes' => $oth->notes ?? 'Others Bottle Entry',
+                    ];
                 }
             }
         } elseif ($source === 'supplier') {
@@ -667,6 +743,188 @@ class BottleLedgerService
 
         $pdf = Pdf::loadView('reports.bottle_ledger_pdf', $data);
         $pdf->setPaper('a4', 'landscape');
+        $pdf->setOption([
+            'isRemoteEnabled' => true,
+            'isHtml5ParserEnabled' => true,
+            'chroot' => [public_path(), base_path(), storage_path()],
+            'defaultFont' => 'Noto Sans',
+        ]);
+
+        return $pdf;
+    }
+
+    /**
+     * Get eligible Without Refill products for dropdown.
+     */
+    public function getWithoutRefillProducts(int $companyId)
+    {
+        return $this->getCompanyBottleProducts($companyId)->map(function ($p) {
+            return [
+                'id' => (int) $p->id,
+                'name' => $p->name,
+                'sku' => $p->sku,
+                'product_type' => $p->product_type,
+                'default_price' => (float) ($p->default_price ?: $p->cost_price ?: 0.0),
+            ];
+        })->values();
+    }
+
+    /**
+     * Fetch Others statement date-wise and individual entries for the month.
+     */
+    public function getOthersStatement(int $companyId, int $year, int $month): array
+    {
+        $startDate = Carbon::createFromDate($year, $month, 1, 'Asia/Kolkata')->startOfDay();
+        $endDate = $startDate->copy()->endOfMonth()->endOfDay();
+        $monthName = $startDate->format('F Y');
+
+        $company = Company::find($companyId);
+        $companyName = $company?->name ?? 'SS AquaFlow';
+
+        $entries = BottleOtherEntry::with('product')
+            ->where('company_id', $companyId)
+            ->whereBetween('entry_date', [$startDate->toDateString(), $endDate->toDateString()])
+            ->orderBy('entry_date', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $dateGroups = [];
+        $totalCount = 0;
+        $grandTotalAmount = 0.0;
+
+        foreach ($entries as $entry) {
+            $dStr = Carbon::parse($entry->entry_date)->toDateString();
+            if (! isset($dateGroups[$dStr])) {
+                $dateGroups[$dStr] = [
+                    'date' => $dStr,
+                    'formatted_date' => Carbon::parse($entry->entry_date)->format('d-m-Y'),
+                    'day_name' => Carbon::parse($entry->entry_date)->format('D'),
+                    'bottle_count' => 0,
+                    'amount' => 0.0,
+                    'entries' => [],
+                ];
+            }
+
+            $qty = (int) $entry->quantity;
+            $amt = (float) $entry->total_amount;
+
+            $dateGroups[$dStr]['bottle_count'] += $qty;
+            $dateGroups[$dStr]['amount'] += $amt;
+            $dateGroups[$dStr]['entries'][] = [
+                'id' => (int) $entry->id,
+                'date' => $dStr,
+                'formatted_date' => Carbon::parse($entry->entry_date)->format('d-m-Y'),
+                'product_id' => (int) $entry->product_id,
+                'product_name' => $entry->product?->name ?? 'Product #'.$entry->product_id,
+                'product_sku' => $entry->product?->sku ?? '',
+                'quantity' => $qty,
+                'amount' => (float) $entry->amount,
+                'total_amount' => $amt,
+                'notes' => $entry->notes ?? '',
+            ];
+
+            $totalCount += $qty;
+            $grandTotalAmount += $amt;
+        }
+
+        foreach ($dateGroups as &$dg) {
+            $dg['amount'] = round($dg['amount'], 2);
+        }
+        unset($dg);
+
+        $flatEntries = [];
+        foreach ($entries as $e) {
+            $flatEntries[] = [
+                'id' => (int) $e->id,
+                'date' => Carbon::parse($e->entry_date)->toDateString(),
+                'formatted_date' => Carbon::parse($e->entry_date)->format('d-m-Y'),
+                'product_id' => (int) $e->product_id,
+                'product_name' => $e->product?->name ?? 'Product #'.$e->product_id,
+                'product_sku' => $e->product?->sku ?? '',
+                'quantity' => (int) $e->quantity,
+                'amount' => (float) $e->amount,
+                'total_amount' => (float) $e->total_amount,
+                'notes' => $e->notes ?? '',
+            ];
+        }
+
+        return [
+            'company_name' => $companyName,
+            'company_logo' => $this->getPdfLogoBase64($company),
+            'year' => $year,
+            'month' => $month,
+            'month_name' => $monthName,
+            'statement' => array_values($dateGroups),
+            'total_bottle_count' => $totalCount,
+            'grand_total_amount' => round($grandTotalAmount, 2),
+            'entries' => $flatEntries,
+        ];
+    }
+
+    /**
+     * Create a new Bottle Other Entry.
+     */
+    public function createOtherEntry(int $companyId, array $data, ?int $userId): BottleOtherEntry
+    {
+        $qty = (int) $data['quantity'];
+        $amt = (float) $data['amount'];
+        $total = round($qty * $amt, 2);
+
+        return BottleOtherEntry::create([
+            'company_id' => $companyId,
+            'entry_date' => Carbon::parse($data['entry_date'])->toDateString(),
+            'product_id' => $data['product_id'],
+            'quantity' => $qty,
+            'amount' => $amt,
+            'total_amount' => $total,
+            'notes' => $data['notes'] ?? null,
+            'created_by' => $userId,
+            'updated_by' => $userId,
+        ]);
+    }
+
+    /**
+     * Update an existing Bottle Other Entry.
+     */
+    public function updateOtherEntry(int $companyId, int $id, array $data, ?int $userId): BottleOtherEntry
+    {
+        $entry = BottleOtherEntry::where('company_id', $companyId)->findOrFail($id);
+
+        $qty = isset($data['quantity']) ? (int) $data['quantity'] : $entry->quantity;
+        $amt = isset($data['amount']) ? (float) $data['amount'] : $entry->amount;
+        $total = round($qty * $amt, 2);
+
+        $entry->update([
+            'entry_date' => isset($data['entry_date']) ? Carbon::parse($data['entry_date'])->toDateString() : $entry->entry_date,
+            'product_id' => $data['product_id'] ?? $entry->product_id,
+            'quantity' => $qty,
+            'amount' => $amt,
+            'total_amount' => $total,
+            'notes' => array_key_exists('notes', $data) ? $data['notes'] : $entry->notes,
+            'updated_by' => $userId,
+        ]);
+
+        return $entry;
+    }
+
+    /**
+     * Soft delete an existing Bottle Other Entry.
+     */
+    public function deleteOtherEntry(int $companyId, int $id): bool
+    {
+        $entry = BottleOtherEntry::where('company_id', $companyId)->findOrFail($id);
+        return (bool) $entry->delete();
+    }
+
+    /**
+     * Generate PDF view for Others Statement in A4 portrait.
+     */
+    public function generateOthersStatementPdf(int $companyId, int $year, int $month)
+    {
+        $data = $this->getOthersStatement($companyId, $year, $month);
+
+        $pdf = Pdf::loadView('reports.bottle_others_statement_pdf', $data);
+        $pdf->setPaper('a4', 'portrait');
         $pdf->setOption([
             'isRemoteEnabled' => true,
             'isHtml5ParserEnabled' => true,
