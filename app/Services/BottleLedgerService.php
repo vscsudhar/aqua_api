@@ -982,6 +982,10 @@ class BottleLedgerService
                     throw new \Exception('Supply item does not belong to the active company.');
                 }
 
+                $itemAmount = (float) ($item->total_amount ?? $item->line_total ?? ($item->quantity * $item->unit_price));
+                $oldSupplyTotal = (float) $supply->total_amount;
+                $oldSupplyPaid = (float) $supply->paid_amount;
+
                 $deletedData = [
                     'id' => $item->id,
                     'supply_id' => $supply->id,
@@ -991,54 +995,142 @@ class BottleLedgerService
                     'product_id' => $item->product_id,
                     'quantity' => (float) $item->quantity,
                     'unit_price' => (float) $item->unit_price,
-                    'total_amount' => (float) ($item->total_amount ?? $item->line_total ?? ($item->quantity * $item->unit_price)),
+                    'total_amount' => $itemAmount,
                 ];
 
-                $remainingItemsCount = $supply->items()->where('id', '!=', $item->id)->count();
+                // Calculate remaining items and new supply total
+                $remainingItems = $supply->items()->where('id', '!=', $item->id)->get();
+                $remainingItemsCount = $remainingItems->count();
 
                 if ($remainingItemsCount === 0) {
-                    // This was the only item in the supply: delete the full supply and linked records
-                    app(DailyCollectionService::class)->deleteSupply($supply, $user);
+                    $newSupplyTotal = 0.0;
+                    $newSupplyPaid = 0.0;
+                    $paymentToDeduct = round(min($itemAmount, $oldSupplyPaid), 2);
                 } else {
-                    // Supply has other items remaining: reverse stock issue for this item, delete item, recalculate supply
-                    $mov = InventoryMovement::where('reference_type', 'dealer_supply')
-                        ->where('reference_id', $supply->id)
-                        ->where('product_id', $item->product_id)
-                        ->where('movement_type', 'supply_out')
-                        ->first();
+                    $newSubtotal = (float) $remainingItems->sum('total_amount');
+                    $newSupplyTotal = round(max(0.0, $newSubtotal + $supply->adjustment_amount - $supply->discount_amount), 2);
+                    $newSupplyPaid = round(min($newSupplyTotal, $oldSupplyPaid), 2);
+                    $paymentToDeduct = round(max(0.0, $oldSupplyPaid - $newSupplyPaid), 2);
+                }
 
-                    if ($mov) {
-                        $prod = Product::find($mov->product_id);
-                        if ($prod && $prod->track_stock) {
-                            app(InventoryService::class)->recordMovement(
-                                productOrId: $prod,
-                                movementType: 'supply_out',
-                                quantity: (float) $item->quantity,
-                                signedQuantity: (float) $item->quantity, // return back to stock
-                                referenceType: 'dealer_supply',
-                                referenceId: $supply->id,
-                                notes: "Stock returned from bottle purchase deletion in supply: #{$supply->supply_no}",
-                                userId: $user?->id,
-                            );
-                        }
-                        if ($mov->quantity <= $item->quantity) {
-                            $mov->delete();
-                        } else {
-                            $mov->quantity = (float) ($mov->quantity - $item->quantity);
-                            $mov->save();
-                        }
+                // Reverse inventory stock issue if tracked
+                $mov = InventoryMovement::where('reference_type', 'dealer_supply')
+                    ->where('reference_id', $supply->id)
+                    ->where('product_id', $item->product_id)
+                    ->where('movement_type', 'supply_out')
+                    ->first();
+
+                if ($mov) {
+                    $prod = Product::find($mov->product_id);
+                    if ($prod && $prod->track_stock) {
+                        app(InventoryService::class)->recordMovement(
+                            productOrId: $prod,
+                            movementType: 'supply_out',
+                            quantity: (float) $item->quantity,
+                            signedQuantity: (float) $item->quantity, // return back to stock
+                            referenceType: 'dealer_supply',
+                            referenceId: $supply->id,
+                            notes: "Stock returned from bottle purchase deletion in supply: #{$supply->supply_no}",
+                            userId: $user?->id,
+                        );
+                    }
+                    if ($mov->quantity <= $item->quantity) {
+                        $mov->delete();
+                    } else {
+                        $mov->quantity = (float) ($mov->quantity - $item->quantity);
+                        $mov->save();
+                    }
+                }
+
+                // Synchronize payment records: deduct only the deleted entry's paid amount from Daily Collection payments
+                $remainingDeduction = $paymentToDeduct;
+
+                if ($remainingDeduction > 0.001) {
+                    $linkedPayments = $supply->payments()
+                        ->where('status', '!=', 'cancelled')
+                        ->with('details')
+                        ->orderBy('id', 'desc')
+                        ->get();
+
+                    $targetPayments = $linkedPayments;
+                    if ($targetPayments->sum('amount') < $remainingDeduction - 0.001) {
+                        $supplyDate = Carbon::parse($supply->supply_date)->toDateString();
+                        $datePayments = DealerPayment::where('dealer_id', $supply->dealer_id)
+                            ->whereDate('payment_date', $supplyDate)
+                            ->where('status', '!=', 'cancelled')
+                            ->whereNotIn('id', $linkedPayments->pluck('id'))
+                            ->with('details')
+                            ->orderBy('id', 'desc')
+                            ->get();
+                        $targetPayments = $targetPayments->concat($datePayments);
                     }
 
-                    // Delete the item
-                    $item->delete();
+                    foreach ($targetPayments as $pay) {
+                        if ($remainingDeduction <= 0.001) {
+                            break;
+                        }
 
-                    // Recalculate supply subtotal and total amount
-                    $newSubtotal = (float) $supply->items()->sum('total_amount');
+                        $payAmount = (float) $pay->amount;
+                        $deductThis = min($payAmount, $remainingDeduction);
+
+                        if ($deductThis >= $payAmount - 0.001) {
+                            // Full payment deletion
+                            $pay->ledgerEntry()?->delete();
+                            $pay->details()->delete();
+                            $pay->delete();
+                            $remainingDeduction = round(max(0.0, $remainingDeduction - $payAmount), 2);
+                        } else {
+                            // Partial payment reduction
+                            $newPayAmount = round($payAmount - $deductThis, 2);
+                            $pay->amount = $newPayAmount;
+
+                            // Deduct from payment details (Cash, UPI, etc.)
+                            if ($pay->details && $pay->details->count() > 0) {
+                                $remDetailDeduct = $deductThis;
+                                foreach ($pay->details as $det) {
+                                    if ($remDetailDeduct <= 0.001) {
+                                        break;
+                                    }
+                                    $detAmt = (float) $det->amount;
+                                    $detDeduct = min($detAmt, $remDetailDeduct);
+                                    $newDetAmt = round($detAmt - $detDeduct, 2);
+                                    if ($newDetAmt <= 0.001) {
+                                        $det->delete();
+                                    } else {
+                                        $det->amount = $newDetAmt;
+                                        $det->save();
+                                    }
+                                    $remDetailDeduct = round(max(0.0, $remDetailDeduct - $detDeduct), 2);
+                                }
+                            }
+
+                            // If the supply is going to be deleted, detach this remaining payment
+                            if ($remainingItemsCount === 0 && $pay->dealer_supply_id == $supply->id) {
+                                $pay->dealer_supply_id = null;
+                            }
+
+                            $pay->save();
+                            $pay->syncLedgerEntry($user?->id);
+                            $remainingDeduction = round(max(0.0, $remainingDeduction - $deductThis), 2);
+                        }
+                    }
+                }
+
+                // Delete the item
+                $item->delete();
+
+                if ($remainingItemsCount === 0) {
+                    // Delete supply debit ledger entry and supply record
+                    $supply->ledgerEntry()?->delete();
+                    $supply->delete();
+                } else {
+                    // Update remaining supply financials
                     $supply->subtotal = $newSubtotal;
-                    $supply->total_amount = round(max(0.0, $newSubtotal + $supply->adjustment_amount - $supply->discount_amount), 2);
-                    $supply->outstanding_amount = round(max(0.0, $supply->total_amount - $supply->paid_amount), 2);
+                    $supply->total_amount = $newSupplyTotal;
+                    $supply->paid_amount = $newSupplyPaid;
+                    $supply->outstanding_amount = round(max(0.0, $newSupplyTotal - $newSupplyPaid), 2);
 
-                    if ($supply->paid_amount >= $supply->total_amount && $supply->total_amount > 0) {
+                    if ($supply->total_amount > 0 && $supply->paid_amount >= $supply->total_amount) {
                         $supply->payment_status = 'paid';
                     } elseif ($supply->paid_amount > 0) {
                         $supply->payment_status = 'partially_paid';
@@ -1047,7 +1139,6 @@ class BottleLedgerService
                     }
 
                     $supply->save();
-
                     // Resynchronize supply debit ledger entry
                     $supply->syncLedgerEntry($user?->id);
                 }
