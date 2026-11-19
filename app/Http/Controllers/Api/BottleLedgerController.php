@@ -214,6 +214,35 @@ class BottleLedgerController extends Controller
     }
 
     /**
+     * Get pre-deletion financial and payment adjustment breakdown.
+     */
+    public function deleteBreakdown(Request $request, string $type, int $id): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        if (! in_array($type, ['dealer_supply_item', 'others_entry'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid transaction type specified.',
+            ], 422);
+        }
+
+        try {
+            $data = $this->bottleLedgerService->getDeleteBreakdown($companyId, $type, $id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 404);
+        }
+    }
+
+    /**
      * Delete a bottle purchase entry from Dealer Bottle Purchase drill-down,
      * synchronizing Daily Collection and Other Statement.
      */
@@ -228,8 +257,25 @@ class BottleLedgerController extends Controller
             ], 422);
         }
 
-        $result = $this->bottleLedgerService->deleteBottlePurchaseEntry($companyId, $type, $id, $request->user());
+        $cashDeduction = (float) $request->input('cash_deduction', 0.0);
+        $upiDeduction = (float) $request->input('upi_deduction', 0.0);
 
-        return response()->json($result);
+        try {
+            $result = $this->bottleLedgerService->deleteBottlePurchaseEntry(
+                $companyId,
+                $type,
+                $id,
+                $cashDeduction,
+                $upiDeduction,
+                $request->user()
+            );
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
 }

@@ -264,6 +264,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/others/pdf', [BottleLedgerController::class, 'exportOthersPdf']);
 
             // Delete bottle purchase entry & synchronize Daily Collection / Other Statement
+            Route::get('/transaction/{type}/{id}/delete-breakdown', [BottleLedgerController::class, 'deleteBreakdown']);
             Route::delete('/transaction/{type}/{id}', [BottleLedgerController::class, 'destroyTransaction']);
         });
         // use Illuminate\Support\Facades\Route;

@@ -946,12 +946,162 @@ class BottleLedgerService
     }
 
     /**
+     * Get pre-deletion financial and payment breakdown for a bottle purchase entry.
+     * Computes whether payment adjustment is required (cash/upi), available payment splits,
+     * or if the deleted amount is unpaid and already part of dealer outstanding balance.
+     */
+    public function getDeleteBreakdown(int $companyId, string $entryType, int $id): array
+    {
+        if ($entryType === 'others_entry') {
+            $entry = BottleOtherEntry::where('company_id', $companyId)->findOrFail($id);
+
+            return [
+                'id' => $entry->id,
+                'entry_type' => 'others_entry',
+                'product_name' => $entry->product?->name ?? 'Product',
+                'party_name' => 'Others',
+                'reference_no' => 'OTH-' . $entry->id,
+                'quantity' => (float) $entry->quantity,
+                'amount' => (float) $entry->amount,
+                'total_amount' => (float) $entry->total_amount,
+                'requires_payment_adjustment' => false,
+                'is_outstanding' => false,
+                'payment_to_deduct' => 0.0,
+                'available_cash' => 0.0,
+                'available_upi' => 0.0,
+                'default_cash_deduction' => 0.0,
+                'default_upi_deduction' => 0.0,
+                'outstanding_adjustment' => 0.0,
+            ];
+        }
+
+        if ($entryType === 'dealer_supply_item') {
+            $item = DealerSupplyItem::with(['supply.dealer', 'product'])->findOrFail($id);
+            $supply = $item->supply;
+
+            if (! $supply || (int) $supply->company_id !== (int) $companyId) {
+                throw new \Exception('Supply item does not belong to the active company.');
+            }
+
+            $itemAmount = (float) ($item->total_amount ?? $item->line_total ?? ($item->quantity * $item->unit_price));
+            $oldSupplyPaid = (float) $supply->paid_amount;
+
+            $remainingItems = $supply->items()->where('id', '!=', $item->id)->get();
+            $remainingItemsCount = $remainingItems->count();
+
+            if ($remainingItemsCount === 0) {
+                $newSupplyTotal = 0.0;
+                $newSupplyPaid = 0.0;
+                $paymentToDeduct = round(min($itemAmount, $oldSupplyPaid), 2);
+            } else {
+                $newSubtotal = (float) $remainingItems->sum('total_amount');
+                $newSupplyTotal = round(max(0.0, $newSubtotal + $supply->adjustment_amount - $supply->discount_amount), 2);
+                $newSupplyPaid = round(min($newSupplyTotal, $oldSupplyPaid), 2);
+                $paymentToDeduct = round(max(0.0, $oldSupplyPaid - $newSupplyPaid), 2);
+            }
+
+            // Find linked payments and determine available Cash and UPI
+            $linkedPayments = $supply->payments()
+                ->where('status', '!=', 'cancelled')
+                ->with('details')
+                ->orderBy('id', 'desc')
+                ->get();
+
+            $targetPayments = $linkedPayments;
+            if ($targetPayments->sum('amount') < $paymentToDeduct - 0.001) {
+                $supplyDate = Carbon::parse($supply->supply_date)->toDateString();
+                $datePayments = DealerPayment::where('dealer_id', $supply->dealer_id)
+                    ->whereDate('payment_date', $supplyDate)
+                    ->where('status', '!=', 'cancelled')
+                    ->whereNotIn('id', $linkedPayments->pluck('id'))
+                    ->with('details')
+                    ->orderBy('id', 'desc')
+                    ->get();
+                $targetPayments = $targetPayments->concat($datePayments);
+            }
+
+            $availableCash = 0.0;
+            $availableUpi = 0.0;
+
+            foreach ($targetPayments as $pay) {
+                if ($pay->details && $pay->details->isNotEmpty()) {
+                    foreach ($pay->details as $det) {
+                        $mode = strtolower(trim($det->payment_mode ?? ''));
+                        if ($mode === 'cash') {
+                            $availableCash += (float) $det->amount;
+                        } elseif ($mode === 'upi') {
+                            $availableUpi += (float) $det->amount;
+                        }
+                    }
+                } else {
+                    $mode = strtolower(trim($pay->payment_method ?? $pay->payment_mode ?? 'cash'));
+                    if ($mode === 'cash') {
+                        $availableCash += (float) $pay->amount;
+                    } elseif ($mode === 'upi') {
+                        $availableUpi += (float) $pay->amount;
+                    }
+                }
+            }
+            $availableCash = round($availableCash, 2);
+            $availableUpi = round($availableUpi, 2);
+
+            $requiresPaymentAdjustment = ($paymentToDeduct > 0.001);
+            $isOutstanding = ($paymentToDeduct <= 0.001 && $itemAmount > 0.001);
+
+            // Default deduction allocation: prefer Cash first up to available cash, then UPI
+            $defaultCash = 0.0;
+            $defaultUpi = 0.0;
+            if ($requiresPaymentAdjustment) {
+                if ($availableCash >= $paymentToDeduct) {
+                    $defaultCash = $paymentToDeduct;
+                    $defaultUpi = 0.0;
+                } elseif ($availableCash > 0) {
+                    $defaultCash = $availableCash;
+                    $defaultUpi = round($paymentToDeduct - $availableCash, 2);
+                } else {
+                    $defaultCash = 0.0;
+                    $defaultUpi = min($paymentToDeduct, $availableUpi);
+                }
+            }
+
+            return [
+                'id' => $item->id,
+                'supply_id' => $supply->id,
+                'entry_type' => 'dealer_supply_item',
+                'party_name' => $supply->dealer?->name ?? 'Dealer',
+                'reference_no' => $supply->supply_no ?? ('SUP-' . $supply->id),
+                'product_name' => $item->product?->name ?? $item->notes ?? 'Product',
+                'quantity' => (float) $item->quantity,
+                'amount' => $itemAmount,
+                'total_amount' => $itemAmount,
+                'requires_payment_adjustment' => $requiresPaymentAdjustment,
+                'is_outstanding' => $isOutstanding,
+                'payment_to_deduct' => $paymentToDeduct,
+                'available_cash' => $availableCash,
+                'available_upi' => $availableUpi,
+                'default_cash_deduction' => $defaultCash,
+                'default_upi_deduction' => $defaultUpi,
+                'outstanding_adjustment' => round(max(0.0, $itemAmount - $paymentToDeduct), 2),
+            ];
+        }
+
+        throw new \Exception('Invalid transaction type specified.');
+    }
+
+    /**
      * Delete a bottle purchase entry (Dealer Supply Item or Others Entry)
      * and synchronize Daily Collection, Other Statement, and Bottle Ledger.
      */
-    public function deleteBottlePurchaseEntry(int $companyId, string $entryType, int $id, ?User $user = null): array
+    public function deleteBottlePurchaseEntry(
+        int $companyId,
+        string $entryType,
+        int $id,
+        float $cashDeduction = 0.0,
+        float $upiDeduction = 0.0,
+        ?User $user = null
+    ): array
     {
-        return DB::transaction(function () use ($companyId, $entryType, $id, $user) {
+        return DB::transaction(function () use ($companyId, $entryType, $id, $cashDeduction, $upiDeduction, $user) {
             if ($entryType === 'others_entry') {
                 $entry = BottleOtherEntry::where('company_id', $companyId)->findOrFail($id);
 
@@ -1042,10 +1192,8 @@ class BottleLedgerService
                     }
                 }
 
-                // Synchronize payment records: deduct only the deleted entry's paid amount from Daily Collection payments
-                $remainingDeduction = $paymentToDeduct;
-
-                if ($remainingDeduction > 0.001) {
+                // Synchronize payment records according to user-selected Cash & UPI deductions
+                if ($paymentToDeduct > 0.001) {
                     $linkedPayments = $supply->payments()
                         ->where('status', '!=', 'cancelled')
                         ->with('details')
@@ -1053,7 +1201,7 @@ class BottleLedgerService
                         ->get();
 
                     $targetPayments = $linkedPayments;
-                    if ($targetPayments->sum('amount') < $remainingDeduction - 0.001) {
+                    if ($targetPayments->sum('amount') < $paymentToDeduct - 0.001) {
                         $supplyDate = Carbon::parse($supply->supply_date)->toDateString();
                         $datePayments = DealerPayment::where('dealer_id', $supply->dealer_id)
                             ->whereDate('payment_date', $supplyDate)
@@ -1065,53 +1213,135 @@ class BottleLedgerService
                         $targetPayments = $targetPayments->concat($datePayments);
                     }
 
+                    // Compute available Cash and UPI across target payments
+                    $availCash = 0.0;
+                    $availUpi = 0.0;
+                    foreach ($targetPayments as $pCheck) {
+                        if ($pCheck->details && $pCheck->details->isNotEmpty()) {
+                            foreach ($pCheck->details as $dCheck) {
+                                $mode = strtolower(trim($dCheck->payment_mode ?? ''));
+                                if ($mode === 'cash') {
+                                    $availCash += (float) $dCheck->amount;
+                                } elseif ($mode === 'upi') {
+                                    $availUpi += (float) $dCheck->amount;
+                                }
+                            }
+                        } else {
+                            $mode = strtolower(trim($pCheck->payment_method ?? $pCheck->payment_mode ?? 'cash'));
+                            if ($mode === 'cash') {
+                                $availCash += (float) $pCheck->amount;
+                            } elseif ($mode === 'upi') {
+                                $availUpi += (float) $pCheck->amount;
+                            }
+                        }
+                    }
+                    $availCash = round($availCash, 2);
+                    $availUpi = round($availUpi, 2);
+
+                    $cashDeduct = round(max(0.0, $cashDeduction), 2);
+                    $upiDeduct = round(max(0.0, $upiDeduction), 2);
+                    $totalDeductions = round($cashDeduct + $upiDeduct, 2);
+
+                    // If neither deduction was provided (or both are 0), fallback to default allocation
+                    if ($totalDeductions <= 0.001) {
+                        if ($availCash >= $paymentToDeduct) {
+                            $cashDeduct = $paymentToDeduct;
+                            $upiDeduct = 0.0;
+                        } else {
+                            $cashDeduct = min($paymentToDeduct, $availCash);
+                            $upiDeduct = round($paymentToDeduct - $cashDeduct, 2);
+                        }
+                    } else {
+                        // Validate user provided deduction amounts
+                        if (abs($totalDeductions - $paymentToDeduct) > 0.01) {
+                            throw new \Exception("Total payment deduction (₹" . number_format($totalDeductions, 2) . ") must match the paid amount to adjust (₹" . number_format($paymentToDeduct, 2) . ").");
+                        }
+                        if ($cashDeduct > $availCash + 0.01) {
+                            throw new \Exception("Cash deduction (₹" . number_format($cashDeduct, 2) . ") cannot exceed available cash (₹" . number_format($availCash, 2) . ").");
+                        }
+                        if ($upiDeduct > $availUpi + 0.01) {
+                            throw new \Exception("UPI deduction (₹" . number_format($upiDeduct, 2) . ") cannot exceed available UPI (₹" . number_format($availUpi, 2) . ").");
+                        }
+                    }
+
+                    $remCashToDeduct = $cashDeduct;
+                    $remUpiToDeduct = $upiDeduct;
+
                     foreach ($targetPayments as $pay) {
-                        if ($remainingDeduction <= 0.001) {
+                        if ($remCashToDeduct <= 0.001 && $remUpiToDeduct <= 0.001) {
                             break;
                         }
 
-                        $payAmount = (float) $pay->amount;
-                        $deductThis = min($payAmount, $remainingDeduction);
+                        $payCashDeducted = 0.0;
+                        $payUpiDeducted = 0.0;
 
-                        if ($deductThis >= $payAmount - 0.001) {
-                            // Full payment deletion
-                            $pay->ledgerEntry()?->delete();
-                            $pay->details()->delete();
-                            $pay->delete();
-                            $remainingDeduction = round(max(0.0, $remainingDeduction - $payAmount), 2);
-                        } else {
-                            // Partial payment reduction
-                            $newPayAmount = round($payAmount - $deductThis, 2);
-                            $pay->amount = $newPayAmount;
-
-                            // Deduct from payment details (Cash, UPI, etc.)
-                            if ($pay->details && $pay->details->count() > 0) {
-                                $remDetailDeduct = $deductThis;
-                                foreach ($pay->details as $det) {
-                                    if ($remDetailDeduct <= 0.001) {
-                                        break;
-                                    }
-                                    $detAmt = (float) $det->amount;
-                                    $detDeduct = min($detAmt, $remDetailDeduct);
-                                    $newDetAmt = round($detAmt - $detDeduct, 2);
-                                    if ($newDetAmt <= 0.001) {
+                        if ($pay->details && $pay->details->count() > 0) {
+                            foreach ($pay->details as $det) {
+                                $mode = strtolower(trim($det->payment_mode ?? ''));
+                                if ($mode === 'cash' && $remCashToDeduct > 0.001) {
+                                    $deduct = min((float) $det->amount, $remCashToDeduct);
+                                    $newAmt = round($det->amount - $deduct, 2);
+                                    if ($newAmt <= 0.001) {
                                         $det->delete();
                                     } else {
-                                        $det->amount = $newDetAmt;
+                                        $det->amount = $newAmt;
                                         $det->save();
                                     }
-                                    $remDetailDeduct = round(max(0.0, $remDetailDeduct - $detDeduct), 2);
+                                    $remCashToDeduct = round(max(0.0, $remCashToDeduct - $deduct), 2);
+                                    $payCashDeducted += $deduct;
+                                } elseif ($mode === 'upi' && $remUpiToDeduct > 0.001) {
+                                    $deduct = min((float) $det->amount, $remUpiToDeduct);
+                                    $newAmt = round($det->amount - $deduct, 2);
+                                    if ($newAmt <= 0.001) {
+                                        $det->delete();
+                                    } else {
+                                        $det->amount = $newAmt;
+                                        $det->save();
+                                    }
+                                    $remUpiToDeduct = round(max(0.0, $remUpiToDeduct - $deduct), 2);
+                                    $payUpiDeducted += $deduct;
                                 }
                             }
-
-                            // If the supply is going to be deleted, detach this remaining payment
-                            if ($remainingItemsCount === 0 && $pay->dealer_supply_id == $supply->id) {
-                                $pay->dealer_supply_id = null;
+                        } else {
+                            $mode = strtolower(trim($pay->payment_method ?? $pay->payment_mode ?? 'cash'));
+                            if ($mode === 'cash' && $remCashToDeduct > 0.001) {
+                                $deduct = min((float) $pay->amount, $remCashToDeduct);
+                                $remCashToDeduct = round(max(0.0, $remCashToDeduct - $deduct), 2);
+                                $payCashDeducted += $deduct;
+                            } elseif ($mode === 'upi' && $remUpiToDeduct > 0.001) {
+                                $deduct = min((float) $pay->amount, $remUpiToDeduct);
+                                $remUpiToDeduct = round(max(0.0, $remUpiToDeduct - $deduct), 2);
+                                $payUpiDeducted += $deduct;
                             }
+                        }
 
-                            $pay->save();
-                            $pay->syncLedgerEntry($user?->id);
-                            $remainingDeduction = round(max(0.0, $remainingDeduction - $deductThis), 2);
+                        $totalDeductedThisPay = round($payCashDeducted + $payUpiDeducted, 2);
+                        if ($totalDeductedThisPay > 0.001) {
+                            $oldPayAmt = (float) $pay->amount;
+                            $newPayAmt = round(max(0.0, $oldPayAmt - $totalDeductedThisPay), 2);
+
+                            if ($newPayAmt <= 0.001) {
+                                $pay->ledgerEntry()?->delete();
+                                $pay->details()->delete();
+                                $pay->delete();
+                            } else {
+                                $pay->amount = $newPayAmt;
+                                if ($pay->details && $pay->details()->count() > 0) {
+                                    $distinctModes = $pay->details()->pluck('payment_mode')->unique()->values();
+                                    if ($distinctModes->count() === 1) {
+                                        $pay->payment_method = $distinctModes->first();
+                                        $pay->payment_mode = $distinctModes->first();
+                                    } else {
+                                        $pay->payment_method = 'split';
+                                        $pay->payment_mode = 'split';
+                                    }
+                                }
+                                if ($remainingItemsCount === 0 && $pay->dealer_supply_id == $supply->id) {
+                                    $pay->dealer_supply_id = null;
+                                }
+                                $pay->save();
+                                $pay->syncLedgerEntry($user?->id);
+                            }
                         }
                     }
                 }
