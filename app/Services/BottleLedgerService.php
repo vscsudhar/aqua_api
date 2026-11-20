@@ -110,7 +110,7 @@ class BottleLedgerService
         $monthName = $startDate->format('F Y');
 
         $company = Company::find($companyId);
-        $companyName = $company?->name ?? 'SS AquaFlow';
+        $companyName = $company?->name ?? 'DockRent';
 
         // 1. Fetch dynamic products belonging ONLY to this company (excluding refills)
         $products = $this->getCompanyBottleProducts($companyId);
@@ -789,7 +789,7 @@ class BottleLedgerService
         $monthName = $startDate->format('F Y');
 
         $company = Company::find($companyId);
-        $companyName = $company?->name ?? 'SS AquaFlow';
+        $companyName = $company?->name ?? 'DockRent';
 
         $entries = BottleOtherEntry::with('product')
             ->where('company_id', $companyId)

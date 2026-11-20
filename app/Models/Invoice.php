@@ -56,6 +56,7 @@ class Invoice extends Model
         'notes',
         'terms',
         'show_bank_details',
+        'show_contact_number',
         'idempotency_key',
         'created_by',
         'updated_by',
@@ -84,6 +85,7 @@ class Invoice extends Model
             'cancelled_at' => 'datetime',
             'finalized_at' => 'datetime',
             'show_bank_details' => 'boolean',
+            'show_contact_number' => 'boolean',
         ];
     }
 

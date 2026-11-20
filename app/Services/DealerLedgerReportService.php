@@ -701,7 +701,7 @@ class DealerLedgerReportService
 
         return [
             'company' => [
-                'name' => $settings->company_name ?? 'Marina Aqua Private Limited',
+                'name' => $settings->company_name ?? 'DockRent',
                 'tagline' => $settings->tagline ?? 'Pure Living Water',
                 'address' => $settings->address ?? 'No. 42, Water Works Road, Guindy, Chennai - 600032, Tamil Nadu',
                 'gstin' => $settings->gstin ?? '33AABCM9876C1Z8',

@@ -95,7 +95,7 @@
         <table style="width: 100%; border: none;">
             <tr>
                 <td style="border: none; padding: 0;">
-                    <div class="company-name">{{ $settings->company_name ?? 'MARINA AQUA' }}</div>
+                    <div class="company-name">{{ $settings->company_name ?? 'DOCKRENT' }}</div>
                     <div class="report-title">DAMAGED PRODUCTS REPORT</div>
                     @if(!empty($filters['start_date']) && !empty($filters['end_date']))
                         <div class="meta-text">Period: {{ \Carbon\Carbon::parse($filters['start_date'])->format('d M Y') }} to {{ \Carbon\Carbon::parse($filters['end_date'])->format('d M Y') }}</div>

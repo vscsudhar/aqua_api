@@ -14,6 +14,7 @@ class CompanySettingResource extends JsonResource
             'company_name' => $this->company_name,
             'tagline' => $this->tagline,
             'phone' => $this->phone,
+            'show_phone_on_invoice' => (bool) ($this->show_phone_on_invoice ?? true),
             'company_contact_number' => $this->phone,
             'email' => $this->email,
             'website' => $this->website,

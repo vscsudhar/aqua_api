@@ -59,6 +59,7 @@ class InvoiceResource extends JsonResource
             'notes' => $this->notes,
             'terms' => $this->terms,
             'show_bank_details' => (bool) ($this->show_bank_details ?? false),
+            'show_contact_number' => (bool) ($this->show_contact_number ?? true),
             'items_count' => $this->whenCounted('items'),
             'items' => InvoiceItemResource::collection($this->whenLoaded('items')),
             'payments' => InvoicePaymentResource::collection($this->whenLoaded('payments')),

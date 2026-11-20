@@ -103,7 +103,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/ping', function () {
         return response()->json([
             'status' => 'success',
-            'message' => 'Marina Aqua API is operational.',
+            'message' => 'DockRent API is operational.',
             'timestamp' => now()->toIso8601String(),
         ]);
     });

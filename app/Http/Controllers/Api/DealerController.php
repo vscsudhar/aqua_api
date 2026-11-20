@@ -554,7 +554,7 @@ class DealerController extends Controller
                 'pan' => $dealer->pan,
             ],
             'company' => $companySetting ? [
-                'name' => $companySetting->company_name ?? 'SS AquaFlow',
+                'name' => $companySetting->company_name ?? 'DockRent',
                 'tagline' => $companySetting->tagline,
                 'phone' => $companySetting->phone,
                 'email' => $companySetting->email,

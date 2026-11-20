@@ -209,7 +209,7 @@
     </table>
 
     <div class="footer-note">
-        This document is system-generated from Marina Aqua &bull; {{ $company_name }} &bull; Confirmed Entries
+        This document is system-generated from DockRent &bull; {{ $company_name }} &bull; Confirmed Entries
     </div>
 
 </body>

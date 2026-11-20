@@ -36,6 +36,7 @@ class CompanySettingController extends Controller
             'company_name' => ['sometimes', 'string', 'max:255'],
             'tagline' => ['nullable', 'string', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'show_phone_on_invoice' => ['sometimes', 'boolean'],
             'company_contact_number' => ['sometimes', 'nullable', 'string', 'max:50'],
             'email' => ['sometimes', 'email', 'max:255'],
             'website' => ['nullable', 'string', 'max:255'],
@@ -204,8 +205,8 @@ class CompanySettingController extends Controller
             .'<rect width="200" height="60" rx="8" fill="#0284C7"/>'
             .'<circle cx="30" cy="30" r="14" fill="#ffffff" fill-opacity="0.2"/>'
             .'<path d="M30 18 C26 23 23 27 23 31 C23 35 26 38 30 38 C34 38 37 35 37 31 C37 27 34 23 30 18 Z" fill="#ffffff"/>'
-            .'<text x="56" y="28" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="14" fill="#ffffff">MARINA AQUA</text>'
-            .'<text x="56" y="44" font-family="Arial, Helvetica, sans-serif" font-size="10" fill="#E0F2FE">PURE PACKAGED WATER</text>'
+            .'<text x="56" y="28" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="14" fill="#ffffff">DOCKRENT</text>'
+            .'<text x="56" y="44" font-family="Arial, Helvetica, sans-serif" font-size="10" fill="#E0F2FE">ASSET & RENTAL MANAGEMENT</text>'
             .'</svg>';
 
         return response($svg, 200, [

@@ -17,6 +17,7 @@ class CompanySetting extends Model
         'company_name',
         'tagline',
         'phone',
+        'show_phone_on_invoice',
         'company_contact_number',
         'email',
         'website',
@@ -49,6 +50,7 @@ class CompanySetting extends Model
         'default_tax_rate' => 'decimal:2',
         'invoice_number_padding' => 'integer',
         'next_invoice_number' => 'integer',
+        'show_phone_on_invoice' => 'boolean',
     ];
 
     protected $appends = ['logo_url', 'company_contact_number'];
@@ -117,7 +119,7 @@ class CompanySetting extends Model
     {
         $targetCompanyId = $companyId ?: (Auth::user()?->company_id ?: 1);
         $company = Company::find($targetCompanyId);
-        $name = $company?->name ?? 'Marina Aqua Pure Water Co.';
+        $name = $company?->name ?? 'DockRent';
 
         $setting = self::withoutGlobalScopes()->firstOrCreate(
             ['company_id' => $targetCompanyId],

@@ -197,6 +197,7 @@ class BillingService
                     ? trim($data['terms']) 
                     : ($settings->invoice_footer_notes ?? null),
                 'show_bank_details' => isset($data['show_bank_details']) ? (bool) $data['show_bank_details'] : false,
+                'show_contact_number' => isset($data['show_contact_number']) ? (bool) $data['show_contact_number'] : true,
                 'idempotency_key' => $data['idempotency_key'] ?? null,
                 'created_by' => $user?->id,
             ]);
@@ -357,6 +358,9 @@ class BillingService
             }
             if (array_key_exists('show_bank_details', $data)) {
                 $invoice->show_bank_details = (bool) $data['show_bank_details'];
+            }
+            if (array_key_exists('show_contact_number', $data)) {
+                $invoice->show_contact_number = (bool) $data['show_contact_number'];
             }
             $invoice->updated_by = $user?->id;
 

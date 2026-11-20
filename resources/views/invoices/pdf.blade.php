@@ -484,8 +484,11 @@
                         <td style="width: 50%; vertical-align: bottom; text-align: right;">
                             @php
                                 $companyPhone = trim($settings->company_contact_number ?? $settings->phone ?? '');
+                                $showPhoneSetting = (bool)($settings->show_phone_on_invoice ?? true);
+                                $showPhoneInvoice = (bool)($invoice->show_contact_number ?? true);
+                                $shouldShowCompanyPhone = !empty($companyPhone) && strtolower($companyPhone) !== 'null' && $showPhoneSetting && $showPhoneInvoice;
                             @endphp
-                            @if(!empty($companyPhone) && strtolower($companyPhone) !== 'null')
+                            @if($shouldShowCompanyPhone)
                                 <div><strong>Phone :</strong> {{ $companyPhone }}</div>
                             @endif
                             @if(!empty(trim($settings->email ?? '')) && strtolower(trim($settings->email)) !== 'null')
