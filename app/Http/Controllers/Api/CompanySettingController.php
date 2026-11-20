@@ -36,6 +36,7 @@ class CompanySettingController extends Controller
             'company_name' => ['sometimes', 'string', 'max:255'],
             'tagline' => ['nullable', 'string', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'optional_phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'show_phone_on_invoice' => ['sometimes', 'boolean'],
             'company_contact_number' => ['sometimes', 'nullable', 'string', 'max:50'],
             'email' => ['sometimes', 'email', 'max:255'],
@@ -62,7 +63,9 @@ class CompanySettingController extends Controller
         ]);
 
         if (array_key_exists('company_contact_number', $validated)) {
-            $validated['phone'] = $validated['company_contact_number'];
+            if (!array_key_exists('optional_phone', $validated)) {
+                $validated['optional_phone'] = $validated['company_contact_number'];
+            }
             unset($validated['company_contact_number']);
         }
 
@@ -77,7 +80,7 @@ class CompanySettingController extends Controller
 
         // Sanitize nullable string fields to empty string to prevent NOT NULL database constraint errors
         $stringNullableCols = [
-            'phone', 'upi_id', 'bank_name', 'bank_branch', 'account_number', 'ifsc_code',
+            'phone', 'optional_phone', 'upi_id', 'bank_name', 'bank_branch', 'account_number', 'ifsc_code',
             'tagline', 'website', 'address', 'gstin', 'pan', 'fssai_no',
             'invoice_footer_notes', 'invoice_prefix',
         ];

@@ -483,13 +483,19 @@
                         <!-- Right: Phone & Email -->
                         <td style="width: 50%; vertical-align: bottom; text-align: right;">
                             @php
-                                $companyPhone = trim($settings->company_contact_number ?? $settings->phone ?? '');
+                                $primaryPhone = trim($settings->phone ?? '');
+                                $optionalPhone = trim($settings->optional_phone ?? '');
                                 $showPhoneSetting = (bool)($settings->show_phone_on_invoice ?? true);
                                 $showPhoneInvoice = (bool)($invoice->show_contact_number ?? true);
-                                $shouldShowCompanyPhone = !empty($companyPhone) && strtolower($companyPhone) !== 'null' && $showPhoneSetting && $showPhoneInvoice;
+                                $canShowPhones = $showPhoneSetting && $showPhoneInvoice;
                             @endphp
-                            @if($shouldShowCompanyPhone)
-                                <div><strong>Phone :</strong> {{ $companyPhone }}</div>
+                            @if($canShowPhones)
+                                @if(!empty($primaryPhone) && strtolower($primaryPhone) !== 'null')
+                                    <div><strong>Phone :</strong> {{ $primaryPhone }}</div>
+                                @endif
+                                @if(!empty($optionalPhone) && strtolower($optionalPhone) !== 'null' && $optionalPhone !== $primaryPhone)
+                                    <div><strong>Mobile :</strong> {{ $optionalPhone }}</div>
+                                @endif
                             @endif
                             @if(!empty(trim($settings->email ?? '')) && strtolower(trim($settings->email)) !== 'null')
                                 <div style="margin-top: 1pt;"><strong>Email :</strong> {{ $settings->email }}</div>

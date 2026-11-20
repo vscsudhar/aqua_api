@@ -17,6 +17,7 @@ class CompanySetting extends Model
         'company_name',
         'tagline',
         'phone',
+        'optional_phone',
         'show_phone_on_invoice',
         'company_contact_number',
         'email',
@@ -57,12 +58,12 @@ class CompanySetting extends Model
 
     public function getCompanyContactNumberAttribute(): ?string
     {
-        return $this->phone ?: null;
+        return $this->optional_phone ?: ($this->phone ?: null);
     }
 
     public function setCompanyContactNumberAttribute($value): void
     {
-        $this->attributes['phone'] = $value ?: '';
+        $this->attributes['optional_phone'] = $value ?: null;
     }
 
     public function getLogoUrlAttribute(): ?string
