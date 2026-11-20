@@ -17,6 +17,7 @@ class CompanySetting extends Model
         'company_name',
         'tagline',
         'phone',
+        'company_contact_number',
         'email',
         'website',
         'address',
@@ -50,20 +51,63 @@ class CompanySetting extends Model
         'next_invoice_number' => 'integer',
     ];
 
-    protected $appends = ['logo_url'];
+    protected $appends = ['logo_url', 'company_contact_number'];
+
+    public function getCompanyContactNumberAttribute(): ?string
+    {
+        return $this->phone ?: null;
+    }
+
+    public function setCompanyContactNumberAttribute($value): void
+    {
+        $this->attributes['phone'] = $value ?: '';
+    }
 
     public function getLogoUrlAttribute(): ?string
     {
-        if (! $this->logo_path) {
+        $logoPath = $this->logo_path ?: \App\Models\Company::where('id', $this->company_id)->value('logo_path');
+        if (! $logoPath) {
             return null;
         }
 
-        if (str_starts_with($this->logo_path, 'http://') || str_starts_with($this->logo_path, 'https://')) {
-            return $this->logo_path;
+        if (str_starts_with($logoPath, 'http://') || str_starts_with($logoPath, 'https://')) {
+            return preg_replace('/^http:\/\/aqua-api\.ethiodeploy\.app/i', 'https://aqua-api.ethiodeploy.app', $logoPath);
         }
 
-        $filename = basename($this->logo_path);
-        return url("api/v1/public/logo-file/{$filename}");
+        $filename = basename($logoPath);
+        $disk = Storage::disk('public');
+
+        // Verify file physically exists on disk
+        if (! $disk->exists("logos/{$filename}")) {
+            $companyId = $this->company_id;
+            if ($companyId) {
+                $files = $disk->files('logos');
+                $matching = array_filter($files, function ($file) use ($companyId) {
+                    return preg_match('/^logos\/company_logo_'.$companyId.'_\d+\./', $file);
+                });
+
+                if (! empty($matching)) {
+                    rsort($matching);
+                    $filename = basename($matching[0]);
+                    $this->updateQuietly(['logo_path' => "logos/{$filename}"]);
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+
+        $url = url("api/v1/public/logo-file/{$filename}");
+        if (str_starts_with(config('app.url'), 'https://')
+            || request()?->isSecure()
+            || request()?->header('X-Forwarded-Proto') === 'https'
+            || str_contains($url, 'ethiodeploy.app')
+            || ! app()->environment('local')) {
+            $url = preg_replace('/^http:\/\//i', 'https://', $url);
+        }
+
+        return $url;
     }
 
     /**
@@ -80,7 +124,7 @@ class CompanySetting extends Model
             [
                 'company_name' => $name,
                 'tagline' => 'Pure & Mineral Rich Packaged Drinking Water',
-                'phone' => $company?->phone ?? '+91 94441 23456',
+                'phone' => $company?->phone ?? '',
                 'email' => $company?->email ?? 'billing@marinaaqua.com',
                 'website' => 'www.marinaaqua.com',
                 'address' => $company?->address ?? 'Plot No. 14, OMR IT Highway, Thoraipakkam, Chennai - 600097',

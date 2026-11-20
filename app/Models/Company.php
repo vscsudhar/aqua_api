@@ -41,16 +41,46 @@ class Company extends Model
 
     public function getLogoUrlAttribute(): ?string
     {
-        if (! $this->logo_path) {
+        $logoPath = $this->logo_path ?: $this->settings?->logo_path;
+        if (! $logoPath) {
             return null;
         }
 
-        if (str_starts_with($this->logo_path, 'http://') || str_starts_with($this->logo_path, 'https://')) {
-            return $this->logo_path;
+        if (str_starts_with($logoPath, 'http://') || str_starts_with($logoPath, 'https://')) {
+            return preg_replace('/^http:\/\/aqua-api\.ethiodeploy\.app/i', 'https://aqua-api.ethiodeploy.app', $logoPath);
         }
 
-        $filename = basename($this->logo_path);
-        return url("api/v1/public/logo-file/{$filename}");
+        $filename = basename($logoPath);
+        $disk = Storage::disk('public');
+
+        // Verify file physically exists on disk
+        if (! $disk->exists("logos/{$filename}")) {
+            // Self-heal: check if another valid logo file exists on disk for this company
+            $companyId = $this->id;
+            $files = $disk->files('logos');
+            $matching = array_filter($files, function ($file) use ($companyId) {
+                return preg_match('/^logos\/company_logo_'.$companyId.'_\d+\./', $file);
+            });
+
+            if (! empty($matching)) {
+                rsort($matching);
+                $filename = basename($matching[0]);
+                $this->updateQuietly(['logo_path' => "logos/{$filename}"]);
+            } else {
+                return null;
+            }
+        }
+
+        $url = url("api/v1/public/logo-file/{$filename}");
+        if (str_starts_with(config('app.url'), 'https://')
+            || request()?->isSecure()
+            || request()?->header('X-Forwarded-Proto') === 'https'
+            || str_contains($url, 'ethiodeploy.app')
+            || ! app()->environment('local')) {
+            $url = preg_replace('/^http:\/\//i', 'https://', $url);
+        }
+
+        return $url;
     }
 
     public function plan(): BelongsTo

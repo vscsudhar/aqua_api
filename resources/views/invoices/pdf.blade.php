@@ -482,10 +482,13 @@
 
                         <!-- Right: Phone & Email -->
                         <td style="width: 50%; vertical-align: bottom; text-align: right;">
-                            @if(!empty(trim($settings->phone ?? '')))
-                                <div><strong>Phone :</strong> {{ $settings->phone }}</div>
+                            @php
+                                $companyPhone = trim($settings->company_contact_number ?? $settings->phone ?? '');
+                            @endphp
+                            @if(!empty($companyPhone) && strtolower($companyPhone) !== 'null')
+                                <div><strong>Phone :</strong> {{ $companyPhone }}</div>
                             @endif
-                            @if(!empty(trim($settings->email ?? '')))
+                            @if(!empty(trim($settings->email ?? '')) && strtolower(trim($settings->email)) !== 'null')
                                 <div style="margin-top: 1pt;"><strong>Email :</strong> {{ $settings->email }}</div>
                             @endif
                         </td>

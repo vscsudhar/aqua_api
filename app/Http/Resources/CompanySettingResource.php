@@ -14,6 +14,7 @@ class CompanySettingResource extends JsonResource
             'company_name' => $this->company_name,
             'tagline' => $this->tagline,
             'phone' => $this->phone,
+            'company_contact_number' => $this->phone,
             'email' => $this->email,
             'website' => $this->website,
             'address' => $this->address,

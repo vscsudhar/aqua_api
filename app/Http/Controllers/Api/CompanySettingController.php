@@ -35,7 +35,8 @@ class CompanySettingController extends Controller
         $validated = $request->validate([
             'company_name' => ['sometimes', 'string', 'max:255'],
             'tagline' => ['nullable', 'string', 'max:255'],
-            'phone' => ['sometimes', 'string', 'max:50'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'company_contact_number' => ['sometimes', 'nullable', 'string', 'max:50'],
             'email' => ['sometimes', 'email', 'max:255'],
             'website' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
@@ -59,6 +60,11 @@ class CompanySettingController extends Controller
             'invoice_footer_notes' => ['nullable', 'string'],
         ]);
 
+        if (array_key_exists('company_contact_number', $validated)) {
+            $validated['phone'] = $validated['company_contact_number'];
+            unset($validated['company_contact_number']);
+        }
+
         // Always preserve authoritative company name from company created in aqua user
         $user = $request->user();
         if ($user && $user->company_id) {
@@ -70,7 +76,7 @@ class CompanySettingController extends Controller
 
         // Sanitize nullable string fields to empty string to prevent NOT NULL database constraint errors
         $stringNullableCols = [
-            'upi_id', 'bank_name', 'bank_branch', 'account_number', 'ifsc_code',
+            'phone', 'upi_id', 'bank_name', 'bank_branch', 'account_number', 'ifsc_code',
             'tagline', 'website', 'address', 'gstin', 'pan', 'fssai_no',
             'invoice_footer_notes', 'invoice_prefix',
         ];
@@ -105,7 +111,9 @@ class CompanySettingController extends Controller
             ],
         ]);
 
-        $settings = CompanySetting::getSettings($request->user()?->company_id);
+        $companyId = $request->user()?->company_id ?: 1;
+        $settings = CompanySetting::getSettings($companyId);
+        $targetCompanyId = $settings->company_id ?: $companyId;
 
         // Remove old custom logo from storage if exists
         if ($settings->logo_path && ! str_starts_with($settings->logo_path, 'http')) {
@@ -116,8 +124,8 @@ class CompanySettingController extends Controller
 
         // Store new file
         $file = $request->file('logo');
-        $extension = $file->getClientOriginalExtension() ?: 'png';
-        $filename = 'company_logo_'.($settings->company_id ?: 1).'_'.time().'.'.$extension;
+        $extension = strtolower($file->getClientOriginalExtension() ?: 'png');
+        $filename = 'company_logo_'.$targetCompanyId.'_'.time().'.'.$extension;
         $path = $file->storeAs('logos', $filename, 'public');
 
         $updatePayload = [
@@ -126,9 +134,11 @@ class CompanySettingController extends Controller
 
         $settings->update($updatePayload);
 
-        if (! empty($settings->company_id)) {
-            \App\Models\Company::where('id', $settings->company_id)->update($updatePayload);
+        if (! empty($targetCompanyId)) {
+            \App\Models\Company::where('id', $targetCompanyId)->update($updatePayload);
         }
+
+        $settings->refresh();
 
         return response()->json([
             'status' => 'success',
@@ -142,7 +152,9 @@ class CompanySettingController extends Controller
      */
     public function deleteLogo(Request $request): JsonResponse
     {
-        $settings = CompanySetting::getSettings($request->user()?->company_id);
+        $companyId = $request->user()?->company_id ?: 1;
+        $settings = CompanySetting::getSettings($companyId);
+        $targetCompanyId = $settings->company_id ?: $companyId;
 
         if ($settings->logo_path && ! str_starts_with($settings->logo_path, 'http')) {
             if (Storage::disk('public')->exists($settings->logo_path)) {
@@ -154,11 +166,13 @@ class CompanySettingController extends Controller
             'logo_path' => null,
         ]);
 
-        if (! empty($settings->company_id)) {
-            \App\Models\Company::where('id', $settings->company_id)->update([
+        if (! empty($targetCompanyId)) {
+            \App\Models\Company::where('id', $targetCompanyId)->update([
                 'logo_path' => null,
             ]);
         }
+
+        $settings->refresh();
 
         return response()->json([
             'status' => 'success',
@@ -205,12 +219,32 @@ class CompanySettingController extends Controller
      */
     public function streamPublicLogo($companyId)
     {
+        $disk = Storage::disk('public');
         $company = \App\Models\Company::find($companyId);
         $setting = CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->first();
         $logoPath = $company?->logo_path ?: $setting?->logo_path;
 
-        if ($logoPath && Storage::disk('public')->exists($logoPath)) {
-            $filePath = Storage::disk('public')->path($logoPath);
+        if ($logoPath && $disk->exists($logoPath)) {
+            $filePath = $disk->path($logoPath);
+            $mime = @mime_content_type($filePath) ?: 'image/png';
+
+            return response()->file($filePath, [
+                'Content-Type' => $mime,
+                'Access-Control-Allow-Origin' => '*',
+                'Access-Control-Allow-Methods' => 'GET, HEAD, OPTIONS',
+                'Cache-Control' => 'public, max-age=86400',
+            ]);
+        }
+
+        // Check if any logo file exists for this company on disk
+        $files = $disk->files('logos');
+        $matching = array_filter($files, function ($file) use ($companyId) {
+            return preg_match('/^logos\/company_logo_'.$companyId.'_\d+\./', $file);
+        });
+
+        if (! empty($matching)) {
+            rsort($matching);
+            $filePath = $disk->path($matching[0]);
             $mime = @mime_content_type($filePath) ?: 'image/png';
 
             return response()->file($filePath, [
@@ -231,9 +265,34 @@ class CompanySettingController extends Controller
      */
     public function streamLogoFile($filename)
     {
+        $disk = Storage::disk('public');
         $path = "logos/{$filename}";
-        if (Storage::disk('public')->exists($path)) {
-            $filePath = Storage::disk('public')->path($path);
+
+        if (! $disk->exists($path)) {
+            // Check if requested filename belongs to a company logo pattern
+            if (preg_match('/^company_logo_(\d+)_/i', $filename, $matches)) {
+                $companyId = (int) $matches[1];
+                $activeLogoPath = \App\Models\Company::where('id', $companyId)->value('logo_path')
+                    ?: CompanySetting::withoutGlobalScopes()->where('company_id', $companyId)->value('logo_path');
+
+                if ($activeLogoPath && $disk->exists($activeLogoPath)) {
+                    $path = $activeLogoPath;
+                } else {
+                    $files = $disk->files('logos');
+                    $matching = array_filter($files, function ($file) use ($companyId) {
+                        return preg_match('/^logos\/company_logo_'.$companyId.'_\d+\./', $file);
+                    });
+
+                    if (! empty($matching)) {
+                        rsort($matching);
+                        $path = $matching[0];
+                    }
+                }
+            }
+        }
+
+        if ($disk->exists($path)) {
+            $filePath = $disk->path($path);
             $mime = @mime_content_type($filePath) ?: 'image/png';
 
             return response()->file($filePath, [
