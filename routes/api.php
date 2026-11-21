@@ -27,7 +27,7 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes - Marina Aqua Multi-Tenant Dealer Management System
+| API Routes - DockRent Unified Operations Cloud | Dharvicloud
 |--------------------------------------------------------------------------
 */
 
