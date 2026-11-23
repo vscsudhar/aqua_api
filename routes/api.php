@@ -108,23 +108,7 @@ Route::prefix('v1')->group(function () {
         ]);
     });
 
-    Route::match(['get', 'post'], '/system/migrate', function () {
-        try {
-            \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-            $output = \Illuminate\Support\Facades\Artisan::output();
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Database migrations executed successfully.',
-                'output' => $output,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Migration failed: ' . $e->getMessage(),
-            ], 500);
-        }
-    });
 
     // ==========================================
     // Authenticated Tenant Business Routes
