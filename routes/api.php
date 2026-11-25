@@ -251,6 +251,31 @@ Route::prefix('v1')->group(function () {
             Route::get('/transaction/{type}/{id}/delete-breakdown', [BottleLedgerController::class, 'deleteBreakdown']);
             Route::delete('/transaction/{type}/{id}', [BottleLedgerController::class, 'destroyTransaction']);
         });
+
+        // Public Sales Module (Direct Parties / Customers)
+        Route::prefix('public-sales')->group(function () {
+            // Party Management
+            Route::get('/parties', [\App\Http\Controllers\Api\PublicSalesController::class, 'partiesIndex']);
+            Route::post('/parties', [\App\Http\Controllers\Api\PublicSalesController::class, 'partiesStore']);
+            Route::put('/parties/{id}', [\App\Http\Controllers\Api\PublicSalesController::class, 'partiesUpdate']);
+            Route::delete('/parties/{id}', [\App\Http\Controllers\Api\PublicSalesController::class, 'partiesDestroy']);
+
+            // Product Catalog Integration (Without for Invoice + Refills)
+            Route::get('/products', [\App\Http\Controllers\Api\PublicSalesController::class, 'productsIndex']);
+
+            // Sales Entries CRUD
+            Route::get('/', [\App\Http\Controllers\Api\PublicSalesController::class, 'salesIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\PublicSalesController::class, 'salesStore']);
+            Route::get('/{id}', [\App\Http\Controllers\Api\PublicSalesController::class, 'salesShow'])->where('id', '[0-9]+');
+            Route::put('/{id}', [\App\Http\Controllers\Api\PublicSalesController::class, 'salesUpdate'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [\App\Http\Controllers\Api\PublicSalesController::class, 'salesDestroy'])->where('id', '[0-9]+');
+
+            // Statements & Details
+            Route::get('/parties/{partyId}/statement', [\App\Http\Controllers\Api\PublicSalesController::class, 'monthlyStatement']);
+            Route::get('/parties/{partyId}/daily-details', [\App\Http\Controllers\Api\PublicSalesController::class, 'dailyDetails']);
+            Route::get('/parties/{partyId}/statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportMonthlyStatementPdf']);
+            Route::get('/parties/{partyId}/daily-statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportDailyStatementPdf']);
+        });
         // use Illuminate\Support\Facades\Route;
 
 Route::get('/backup-check', function () {

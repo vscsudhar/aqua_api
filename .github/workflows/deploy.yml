@@ -1,4 +1,4 @@
-﻿name: Deploy DockRent Laravel API
+name: Deploy DockRent Laravel API
 
 on:
   push:
@@ -31,6 +31,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
@@ -41,6 +42,7 @@ jobs:
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
           set -euo pipefail
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'mkdir -p "$HOME/dockrent_api"'
           tar \
             --exclude='./.git' \
             --exclude='./.github' \
@@ -60,9 +62,15 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         run: |
-          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            'cd "$HOME/dockrent_api" &&
-             composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction &&
-             php artisan optimize:clear &&
-             php artisan config:cache &&
-             php artisan view:cache'
+          set -euo pipefail
+          ssh -p "$DEPLOY_PORT" "$DEPLOY_USER@$DEPLOY_HOST" '
+            set -euo pipefail
+            cd "$HOME/dockrent_api"
+
+            composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+            php artisan migrate --force
+
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan view:cache
+          '
