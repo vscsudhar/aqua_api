@@ -121,7 +121,11 @@
 </head>
 <body>
     @php
-        $finalLogo = !empty($companyLogo) ? $companyLogo : (!empty($statement['company']['logo_url']) ? $statement['company']['logo_url'] : null);
+        $finalLogo = null;
+        $candidateLogo = !empty($companyLogoPath) ? $companyLogoPath : (!empty($companyLogo) ? $companyLogo : null);
+        if (!empty($candidateLogo) && file_exists($candidateLogo)) {
+            $finalLogo = $candidateLogo;
+        }
     @endphp
     <div class="header">
         <table style="width: 100%; border: none; margin: 0; border-collapse: collapse;">

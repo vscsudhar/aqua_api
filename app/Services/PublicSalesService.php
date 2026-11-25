@@ -582,7 +582,7 @@ class PublicSalesService
 
         $company = Company::find($companyId);
         $settings = CompanySetting::where('company_id', $companyId)->first();
-        $companyLogo = $this->getCompanyLogoForPdf($companyId);
+        $logoUrl = $settings?->logo_url ?: $company?->logo_url;
 
         return [
             'company' => [
@@ -592,7 +592,7 @@ class PublicSalesService
                 'address' => $settings->address ?? '',
                 'phone' => $settings->effectiveContactNumber ?? $settings->phone ?? '',
                 'gstin' => $settings->gstin ?? '',
-                'logo_url' => $companyLogo,
+                'logo_url' => $logoUrl,
             ],
             'party' => [
                 'id' => $party->id,
@@ -690,7 +690,7 @@ class PublicSalesService
 
         $company = Company::find($companyId);
         $settings = CompanySetting::where('company_id', $companyId)->first();
-        $companyLogo = $this->getCompanyLogoForPdf($companyId);
+        $logoUrl = $settings?->logo_url ?: $company?->logo_url;
 
         return [
             'company' => [
@@ -700,7 +700,7 @@ class PublicSalesService
                 'address' => $settings->address ?? '',
                 'phone' => $settings->effectiveContactNumber ?? $settings->phone ?? '',
                 'gstin' => $settings->gstin ?? '',
-                'logo_url' => $companyLogo,
+                'logo_url' => $logoUrl,
             ],
             'party' => [
                 'id' => $party->id,
@@ -723,9 +723,10 @@ class PublicSalesService
     }
 
     /**
-     * Get base64 data URI or local path for company logo to ensure reliable DomPDF rendering.
+     * Resolve the company logo to its server-side physical file path for DomPDF generation.
+     * Prevents external HTTP requests and eliminates Base64 memory overhead.
      */
-    public function getCompanyLogoForPdf(int $companyId): ?string
+    public function getCompanyLogoFilePath(int $companyId): ?string
     {
         $company = Company::find($companyId);
         $settings = CompanySetting::where('company_id', $companyId)->first();
@@ -736,43 +737,63 @@ class PublicSalesService
             $disk = Storage::disk('public');
             $cleanPath = ltrim(str_replace('public/', '', $logoPath), '/');
 
-            // 1. Check in Storage disk('public')
+            // 1. Storage disk('public') path
             if ($disk->exists($cleanPath)) {
                 $fullPath = $disk->path($cleanPath);
-                $mime = @mime_content_type($fullPath) ?: 'image/png';
-                $data = @file_get_contents($fullPath);
-                if ($data !== false && strlen($data) > 0) {
-                    return 'data:'.$mime.';base64,'.base64_encode($data);
+                if (file_exists($fullPath)) {
+                    return $fullPath;
                 }
             }
 
             // 2. Check storage_path('app/public/...')
             $storagePath = storage_path('app/public/'.$cleanPath);
             if (file_exists($storagePath)) {
-                $mime = @mime_content_type($storagePath) ?: 'image/png';
-                $data = @file_get_contents($storagePath);
-                if ($data !== false && strlen($data) > 0) {
-                    return 'data:'.$mime.';base64,'.base64_encode($data);
-                }
+                return $storagePath;
             }
 
             // 3. Check public_path('storage/...')
             $publicStoragePath = public_path('storage/'.$cleanPath);
             if (file_exists($publicStoragePath)) {
-                $mime = @mime_content_type($publicStoragePath) ?: 'image/png';
-                $data = @file_get_contents($publicStoragePath);
-                if ($data !== false && strlen($data) > 0) {
-                    return 'data:'.$mime.';base64,'.base64_encode($data);
+                return $publicStoragePath;
+            }
+
+            // 4. Check logos/filename directly if cleanPath is just a filename
+            $filename = basename($cleanPath);
+            if ($disk->exists("logos/{$filename}")) {
+                $fullPath = $disk->path("logos/{$filename}");
+                if (file_exists($fullPath)) {
+                    return $fullPath;
                 }
+            }
+
+            $storageLogoPath = storage_path('app/public/logos/'.$filename);
+            if (file_exists($storageLogoPath)) {
+                return $storageLogoPath;
+            }
+
+            $publicLogoPath = public_path('storage/logos/'.$filename);
+            if (file_exists($publicLogoPath)) {
+                return $publicLogoPath;
             }
         }
 
-        // 4. Fallback to logo_url if accessible
+        return null;
+    }
+
+    /**
+     * Get local file path (or fallback data URI) for company logo to ensure reliable DomPDF rendering.
+     */
+    public function getCompanyLogoForPdf(int $companyId): ?string
+    {
+        $filePath = $this->getCompanyLogoFilePath($companyId);
+        if ($filePath && file_exists($filePath)) {
+            return $filePath;
+        }
+
+        $company = Company::find($companyId);
+        $settings = CompanySetting::where('company_id', $companyId)->first();
         $logoUrl = $settings?->logo_url ?: $company?->logo_url;
         if (! empty($logoUrl)) {
-            if (str_starts_with($logoUrl, 'data:image')) {
-                return $logoUrl;
-            }
             return $logoUrl;
         }
 

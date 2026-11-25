@@ -672,11 +672,20 @@ class PublicSalesTest extends TestCase
         $this->companyA->update(['logo_path' => $path]);
 
         $service = app(\App\Services\PublicSalesService::class);
-        $base64Logo = $service->getCompanyLogoForPdf($this->companyA->id);
-        $this->assertNotNull($base64Logo);
-        $this->assertStringStartsWith('data:image/', $base64Logo);
+        $logoFilePath = $service->getCompanyLogoFilePath($this->companyA->id);
+        $this->assertNotNull($logoFilePath);
+        $this->assertFileExists($logoFilePath);
 
-        // Verify PDF generates cleanly with logo embedded
+        // Verify API statements return URL (not Base64)
+        $statementData = $service->getPartyMonthlyStatement($this->companyA->id, $party->id, $today->year, $today->month);
+        $this->assertNotNull($statementData['company']['logo_url']);
+        $this->assertStringNotContainsString('data:image', $statementData['company']['logo_url']);
+
+        $dailyDetailsData = $service->getPartyDailyDetails($this->companyA->id, $party->id, $saleDate);
+        $this->assertNotNull($dailyDetailsData['company']['logo_url']);
+        $this->assertStringNotContainsString('data:image', $dailyDetailsData['company']['logo_url']);
+
+        // Verify PDF generates cleanly with logo embedded from local file path
         $monthlyWithLogo = $this->get("/api/v1/public-sales/parties/{$party->id}/statement/pdf?year={$today->year}&month={$today->month}");
         $monthlyWithLogo->assertStatus(200);
         $this->assertStringStartsWith('%PDF-', $monthlyWithLogo->getContent());
