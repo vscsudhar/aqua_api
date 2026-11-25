@@ -4,13 +4,32 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>Public Sales Monthly Statement - {{ $statement['party']['party_name'] }}</title>
     <style>
+        @page {
+            size: A4 landscape;
+            margin: 8mm 10mm;
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: normal;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: bold;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
+        }
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
             font-size: 8pt;
             color: #1e293b;
             line-height: 1.35;
             margin: 0;
-            padding: 8px 12px;
+            padding: 4px 6px;
+        }
+        table, th, td, div, span, p {
+            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
         }
         .header {
             border-bottom: 2px solid #059669;
@@ -151,9 +170,9 @@
                 @foreach($statement['product_columns'] as $col)
                     <th>{{ $col }}</th>
                 @endforeach
-                <th style="width: 75px;" class="text-right">Cash (₹)</th>
-                <th style="width: 75px;" class="text-right">UPI (₹)</th>
-                <th style="width: 85px;" class="text-right">Daily Total (₹)</th>
+                <th style="width: 75px;" class="text-right">Cash (&#8377;)</th>
+                <th style="width: 75px;" class="text-right">UPI (&#8377;)</th>
+                <th style="width: 85px;" class="text-right">Daily Total (&#8377;)</th>
             </tr>
         </thead>
         <tbody>
@@ -163,12 +182,12 @@
                     <td class="text-center">{{ $record['entries_count'] }}</td>
                     @foreach($statement['product_columns'] as $col)
                         <td class="text-center">
-                            {{ isset($record['product_quantities'][$col]) && $record['product_quantities'][$col] > 0 ? (int)$record['product_quantities'][$col] == $record['product_quantities'][$col] ? (int)$record['product_quantities'][$col] : number_format($record['product_quantities'][$col], 1) : '-' }}
+                            {{ isset($record['product_quantities'][$col]) && $record['product_quantities'][$col] > 0 ? ((int)$record['product_quantities'][$col] == $record['product_quantities'][$col] ? (int)$record['product_quantities'][$col] : number_format($record['product_quantities'][$col], 1)) : '-' }}
                         </td>
                     @endforeach
-                    <td class="text-right">₹{{ number_format($record['cash_amount'], 2) }}</td>
-                    <td class="text-right">₹{{ number_format($record['upi_amount'], 2) }}</td>
-                    <td class="text-right" style="font-weight: bold;">₹{{ number_format($record['daily_total'], 2) }}</td>
+                    <td class="text-right">&#8377;{{ number_format($record['cash_amount'], 2) }}</td>
+                    <td class="text-right">&#8377;{{ number_format($record['upi_amount'], 2) }}</td>
+                    <td class="text-right" style="font-weight: bold;">&#8377;{{ number_format($record['daily_total'], 2) }}</td>
                 </tr>
             @empty
                 <tr>
@@ -188,9 +207,9 @@
                             {{ isset($statement['monthly_totals']['product_quantities'][$col]) ? ((int)$statement['monthly_totals']['product_quantities'][$col] == $statement['monthly_totals']['product_quantities'][$col] ? (int)$statement['monthly_totals']['product_quantities'][$col] : number_format($statement['monthly_totals']['product_quantities'][$col], 1)) : 0 }}
                         </td>
                     @endforeach
-                    <td class="text-right">₹{{ number_format($statement['monthly_totals']['total_cash'], 2) }}</td>
-                    <td class="text-right">₹{{ number_format($statement['monthly_totals']['total_upi'], 2) }}</td>
-                    <td class="text-right" style="font-size: 8.5pt;">₹{{ number_format($statement['monthly_totals']['grand_total'], 2) }}</td>
+                    <td class="text-right">&#8377;{{ number_format($statement['monthly_totals']['total_cash'], 2) }}</td>
+                    <td class="text-right">&#8377;{{ number_format($statement['monthly_totals']['total_upi'], 2) }}</td>
+                    <td class="text-right" style="font-size: 8.5pt;">&#8377;{{ number_format($statement['monthly_totals']['grand_total'], 2) }}</td>
                 </tr>
             </tfoot>
         @endif

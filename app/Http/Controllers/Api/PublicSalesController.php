@@ -346,7 +346,12 @@ class PublicSalesController extends Controller
         $pdf = Pdf::loadView('reports.public_sales_monthly_statement_pdf', [
             'statement' => $statement,
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'landscape');
+        ])->setPaper('a4', 'landscape')
+          ->setOption([
+              'isRemoteEnabled' => true,
+              'isHtml5ParserEnabled' => true,
+              'chroot' => [public_path(), base_path(), storage_path()],
+          ]);
 
         $fileName = sprintf('Public_Sales_Statement_%s_%s_%04d_%02d.pdf',
             str_replace(' ', '_', $statement['party']['party_name']),
@@ -368,7 +373,12 @@ class PublicSalesController extends Controller
         $pdf = Pdf::loadView('reports.public_sales_daily_statement_pdf', [
             'details' => $details,
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
-        ])->setPaper('a4', 'portrait');
+        ])->setPaper('a4', 'portrait')
+          ->setOption([
+              'isRemoteEnabled' => true,
+              'isHtml5ParserEnabled' => true,
+              'chroot' => [public_path(), base_path(), storage_path()],
+          ]);
 
         $fileName = sprintf('Public_Sales_Daily_%s_%s.pdf',
             str_replace(' ', '_', $details['party']['party_name']),

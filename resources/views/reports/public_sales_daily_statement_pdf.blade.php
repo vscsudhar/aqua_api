@@ -4,13 +4,32 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
     <title>Daily Sales Details - {{ $details['party']['party_name'] }} ({{ $details['formatted_date'] }})</title>
     <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm 12mm;
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: normal;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
+        }
+        @font-face {
+            font-family: 'Noto Sans';
+            font-style: normal;
+            font-weight: bold;
+            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
+        }
         body {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
             font-size: 8.5pt;
             color: #1e293b;
             line-height: 1.4;
             margin: 0;
-            padding: 12px 16px;
+            padding: 6px 10px;
+        }
+        table, th, td, div, span, p {
+            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
         }
         .header {
             border-bottom: 2px solid #059669;
@@ -154,7 +173,7 @@
                             Entry #{{ $index + 1 }} &bull; ID: <strong>{{ $entry['entry_no'] }}</strong> &bull; Time: <strong>{{ $entry['exact_time'] }}</strong>
                         </td>
                         <td style="border: none; padding: 0; text-align: right;">
-                            Cash: <strong>₹{{ number_format($entry['cash_amount'], 2) }}</strong> | UPI: <strong>₹{{ number_format($entry['upi_amount'], 2) }}</strong> | Total: <strong>₹{{ number_format($entry['total_amount'], 2) }}</strong>
+                            Cash: <strong>&#8377;{{ number_format($entry['cash_amount'], 2) }}</strong> | UPI: <strong>&#8377;{{ number_format($entry['upi_amount'], 2) }}</strong> | Total: <strong>&#8377;{{ number_format($entry['total_amount'], 2) }}</strong>
                         </td>
                     </tr>
                 </table>
@@ -166,9 +185,9 @@
                         <th style="width: 40px;" class="text-center">#</th>
                         <th>Product Description</th>
                         <th style="width: 70px;" class="text-center">Unit</th>
-                        <th style="width: 80px;" class="text-right">Rate</th>
+                        <th style="width: 80px;" class="text-right">Rate (&#8377;)</th>
                         <th style="width: 80px;" class="text-center">Qty</th>
-                        <th style="width: 100px;" class="text-right">Amount (₹)</th>
+                        <th style="width: 100px;" class="text-right">Amount (&#8377;)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -177,9 +196,9 @@
                             <td class="text-center">{{ $itemIdx + 1 }}</td>
                             <td><strong>{{ $item['product_name'] }}</strong></td>
                             <td class="text-center">{{ $item['unit'] }}</td>
-                            <td class="text-right">₹{{ number_format($item['rate'], 2) }}</td>
+                            <td class="text-right">&#8377;{{ number_format($item['rate'], 2) }}</td>
                             <td class="text-center" style="font-weight: bold;">{{ (int)$item['quantity'] == $item['quantity'] ? (int)$item['quantity'] : number_format($item['quantity'], 1) }}</td>
-                            <td class="text-right" style="font-weight: bold;">₹{{ number_format($item['amount'], 2) }}</td>
+                            <td class="text-right" style="font-weight: bold;">&#8377;{{ number_format($item['amount'], 2) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -206,9 +225,9 @@
                     </td>
                     <td style="border: none; padding: 0; vertical-align: top; text-align: right; width: 40%;">
                         <div style="font-size: 8pt; color: #065f46;">Total Entries: <strong>{{ $details['day_summary']['total_entries'] }}</strong></div>
-                        <div style="font-size: 8pt; color: #065f46; margin-top: 2px;">Total Cash: <strong>₹{{ number_format($details['day_summary']['total_cash'], 2) }}</strong></div>
-                        <div style="font-size: 8pt; color: #065f46; margin-top: 2px;">Total UPI: <strong>₹{{ number_format($details['day_summary']['total_upi'], 2) }}</strong></div>
-                        <div style="font-size: 11pt; color: #065f46; font-weight: bold; margin-top: 4px;">Daily Grand Total: ₹{{ number_format($details['day_summary']['daily_grand_total'], 2) }}</div>
+                        <div style="font-size: 8pt; color: #065f46; margin-top: 2px;">Total Cash: <strong>&#8377;{{ number_format($details['day_summary']['total_cash'], 2) }}</strong></div>
+                        <div style="font-size: 8pt; color: #065f46; margin-top: 2px;">Total UPI: <strong>&#8377;{{ number_format($details['day_summary']['total_upi'], 2) }}</strong></div>
+                        <div style="font-size: 11pt; color: #065f46; font-weight: bold; margin-top: 4px;">Daily Grand Total: &#8377;{{ number_format($details['day_summary']['daily_grand_total'], 2) }}</div>
                     </td>
                 </tr>
             </table>

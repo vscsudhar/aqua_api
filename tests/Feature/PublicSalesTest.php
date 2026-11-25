@@ -627,4 +627,42 @@ class PublicSalesTest extends TestCase
         $res = $this->getJson("/api/v1/public-sales/parties/{$partyA->id}/statement");
         $res->assertStatus(404);
     }
+
+    /**
+     * Test 11: PDF Statement Generation (Monthly and Daily Statements).
+     */
+    public function test_monthly_and_daily_pdf_generation(): void
+    {
+        Sanctum::actingAs($this->userA);
+
+        $party = PublicParty::create([
+            'company_id' => $this->companyA->id,
+            'party_name' => 'PDF Test Party',
+        ]);
+
+        $today = Carbon::today('Asia/Kolkata');
+        $saleDate = $today->toDateString();
+
+        $this->postJson('/api/v1/public-sales', [
+            'party_id' => $party->id,
+            'sale_date' => $saleDate,
+            'cash_amount' => 500.00,
+            'upi_amount' => 200.00,
+            'items' => [
+                ['product_id' => $this->productWithoutInvoice->id, 'rate' => 20.00, 'quantity' => 25, 'amount' => 500.00],
+            ],
+        ]);
+
+        // 1. Monthly Statement PDF
+        $monthlyPdf = $this->get("/api/v1/public-sales/parties/{$party->id}/statement/pdf?year={$today->year}&month={$today->month}");
+        $monthlyPdf->assertStatus(200);
+        $this->assertStringContainsString('application/pdf', $monthlyPdf->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF-', $monthlyPdf->getContent());
+
+        // 2. Daily Statement PDF
+        $dailyPdf = $this->get("/api/v1/public-sales/parties/{$party->id}/daily-statement/pdf?date={$saleDate}");
+        $dailyPdf->assertStatus(200);
+        $this->assertStringContainsString('application/pdf', $dailyPdf->headers->get('Content-Type'));
+        $this->assertStringStartsWith('%PDF-', $dailyPdf->getContent());
+    }
 }
