@@ -335,7 +335,7 @@ class PublicSalesTest extends TestCase
             ->assertJsonFragment(['Stock Not Available. Stock illa. Public Sales-la add pannalama?']);
 
         // Step 2: With confirm_insufficient_stock = true
-        // Must deduct ONLY available stock (50), leave 0, without creating negative inventory
+        // Per business rule: Do NOT deduct any stock for insufficient items, stock_deducted = 0, current_stock unmodified
         $res2 = $this->postJson('/api/v1/public-sales', [
             'party_id' => $party->id,
             'sale_date' => Carbon::today('Asia/Kolkata')->toDateString(),
@@ -354,10 +354,114 @@ class PublicSalesTest extends TestCase
         $res2->assertStatus(201);
 
         $this->productTracked->refresh();
-        $this->assertEquals(0.00, (float) $this->productTracked->current_stock);
+        // Current stock must NOT be modified (remains 50.00)
+        $this->assertEquals(50.00, (float) $this->productTracked->current_stock);
 
         $item = PublicSaleItem::where('product_id', $this->productTracked->id)->latest('id')->first();
-        $this->assertEquals(50.00, (float) $item->stock_deducted);
+        // stock_deducted must be 0 for insufficient items
+        $this->assertEquals(0.00, (float) $item->stock_deducted);
+    }
+
+    /**
+     * Test 5b: Zero-stock and mixed items confirmation scenario.
+     */
+    public function test_create_sale_zero_stock_and_mixed_items(): void
+    {
+        Sanctum::actingAs($this->userA);
+
+        $party = PublicParty::create([
+            'company_id' => $this->companyA->id,
+            'party_name' => 'Zero Stock Party',
+        ]);
+
+        $zeroStockProduct = Product::create([
+            'company_id' => $this->companyA->id,
+            'category_id' => $this->category->id,
+            'unit_id' => $this->unitBottle->id,
+            'name' => 'Zero Stock 500ml',
+            'sku' => 'ZERO-500',
+            'product_type' => 'normal',
+            'unit' => 'Bottle',
+            'default_price' => 15.00,
+            'cost_price' => 8.00,
+            'tax_rate' => 0.00,
+            'current_stock' => 0.00,
+            'track_stock' => true,
+            'inventory_start_date' => Carbon::now()->subDays(5)->toDateString(),
+            'is_active' => true,
+            'for_invoice' => false,
+        ]);
+
+        $this->productTracked->update(['current_stock' => 50.00]);
+
+        // Attempt sale: 10 of productTracked (sufficient), 5 of zeroStockProduct (zero stock)
+        $res1 = $this->postJson('/api/v1/public-sales', [
+            'party_id' => $party->id,
+            'sale_date' => Carbon::today('Asia/Kolkata')->toDateString(),
+            'items' => [
+                [
+                    'product_id' => $this->productTracked->id,
+                    'rate' => 30.00,
+                    'quantity' => 10,
+                    'amount' => 300.00,
+                ],
+                [
+                    'product_id' => $zeroStockProduct->id,
+                    'rate' => 15.00,
+                    'quantity' => 5,
+                    'amount' => 75.00,
+                ],
+            ],
+        ]);
+
+        $res1->assertStatus(409)
+            ->assertJsonPath('is_stock_insufficient', true)
+            ->assertJsonPath('insufficient_items.0.product_name', 'Zero Stock 500ml')
+            ->assertJsonPath('insufficient_items.0.available_stock', 0)
+            ->assertJsonPath('insufficient_items.0.requested_quantity', 5);
+
+        // Confirm "Yes, Add"
+        $res2 = $this->postJson('/api/v1/public-sales', [
+            'party_id' => $party->id,
+            'sale_date' => Carbon::today('Asia/Kolkata')->toDateString(),
+            'confirm_insufficient_stock' => true,
+            'cash_amount' => 375.00,
+            'items' => [
+                [
+                    'product_id' => $this->productTracked->id,
+                    'rate' => 30.00,
+                    'quantity' => 10,
+                    'amount' => 300.00,
+                ],
+                [
+                    'product_id' => $zeroStockProduct->id,
+                    'rate' => 15.00,
+                    'quantity' => 5,
+                    'amount' => 75.00,
+                ],
+            ],
+        ]);
+
+        $res2->assertStatus(201);
+
+        // Sufficient product must have stock deducted (50 - 10 = 40)
+        $this->productTracked->refresh();
+        $this->assertEquals(40.00, (float) $this->productTracked->current_stock);
+
+        // Zero-stock product must NOT have stock deducted (remains 0, no negative stock)
+        $zeroStockProduct->refresh();
+        $this->assertEquals(0.00, (float) $zeroStockProduct->current_stock);
+
+        $saleId = $res2->json('data.id');
+        $itemSufficient = PublicSaleItem::where('public_sale_id', $saleId)
+            ->where('product_id', $this->productTracked->id)
+            ->first();
+        $this->assertEquals(10.00, (float) $itemSufficient->stock_deducted);
+
+        $itemZero = PublicSaleItem::where('public_sale_id', $saleId)
+            ->where('product_id', $zeroStockProduct->id)
+            ->first();
+        $this->assertEquals(0.00, (float) $itemZero->stock_deducted);
     }
 
     /**

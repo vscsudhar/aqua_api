@@ -201,11 +201,11 @@ class PublicSalesService
                 if ($trackingStarted) {
                     $available = (float) $product->current_stock;
                     if ($available >= $qty) {
-                        // Case B: Sufficient stock
+                        // Case B: Sufficient stock -> deduct requested quantity
                         $deductedStock = $qty;
                     } else {
-                        // Case C: Deduct only available stock, non-negative
-                        $deductedStock = max(0.00, min($available, $qty));
+                        // Case C: Insufficient or zero stock confirmed -> do NOT deduct any stock, keep current stock unchanged
+                        $deductedStock = 0.00;
                     }
 
                     if ($deductedStock > 0) {
@@ -368,9 +368,11 @@ class PublicSalesService
                 if ($trackingStarted) {
                     $available = (float) $product->current_stock;
                     if ($available >= $qty) {
+                        // Sufficient stock -> deduct requested quantity
                         $deductedStock = $qty;
                     } else {
-                        $deductedStock = max(0.00, min($available, $qty));
+                        // Insufficient or zero stock confirmed -> do NOT deduct any stock, keep current stock unchanged
+                        $deductedStock = 0.00;
                     }
 
                     if ($deductedStock > 0) {
