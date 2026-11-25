@@ -120,10 +120,18 @@
     </style>
 </head>
 <body>
+    @php
+        $finalLogo = !empty($companyLogo) ? $companyLogo : (!empty($statement['company']['logo_url']) ? $statement['company']['logo_url'] : null);
+    @endphp
     <div class="header">
-        <table style="width: 100%; border: none; margin: 0;">
+        <table style="width: 100%; border: none; margin: 0; border-collapse: collapse;">
             <tr>
-                <td style="border: none; padding: 0; vertical-align: top; width: 65%;">
+                @if(!empty($finalLogo))
+                    <td style="width: 75px; vertical-align: middle; border: none; padding: 0 12px 0 0;">
+                        <img src="{{ $finalLogo }}" style="max-height: 50px; max-width: 75px; object-fit: contain; display: block;" alt="Logo" />
+                    </td>
+                @endif
+                <td style="border: none; padding: 0; vertical-align: top; width: {{ !empty($finalLogo) ? '55%' : '65%' }};">
                     <div class="company-name">{{ $statement['company']['name'] }}</div>
                     @if(!empty($statement['company']['tagline']))
                         <div class="company-meta" style="font-weight: bold;">{{ $statement['company']['tagline'] }}</div>

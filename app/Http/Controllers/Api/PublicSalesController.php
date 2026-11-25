@@ -342,9 +342,11 @@ class PublicSalesController extends Controller
         $month = (int) $request->input('month', $now->month);
 
         $statement = $this->service->getPartyMonthlyStatement($companyId, $partyId, $year, $month);
+        $companyLogo = $this->service->getCompanyLogoForPdf($companyId);
 
         $pdf = Pdf::loadView('reports.public_sales_monthly_statement_pdf', [
             'statement' => $statement,
+            'companyLogo' => $companyLogo,
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
         ])->setPaper('a4', 'landscape')
           ->setOption([
@@ -369,9 +371,11 @@ class PublicSalesController extends Controller
         $date = $request->input('date', Carbon::today('Asia/Kolkata')->toDateString());
 
         $details = $this->service->getPartyDailyDetails($companyId, $partyId, $date);
+        $companyLogo = $this->service->getCompanyLogoForPdf($companyId);
 
         $pdf = Pdf::loadView('reports.public_sales_daily_statement_pdf', [
             'details' => $details,
+            'companyLogo' => $companyLogo,
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
         ])->setPaper('a4', 'portrait')
           ->setOption([

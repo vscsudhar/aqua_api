@@ -13,6 +13,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class PublicSalesService
@@ -581,6 +582,7 @@ class PublicSalesService
 
         $company = Company::find($companyId);
         $settings = CompanySetting::where('company_id', $companyId)->first();
+        $companyLogo = $this->getCompanyLogoForPdf($companyId);
 
         return [
             'company' => [
@@ -590,7 +592,7 @@ class PublicSalesService
                 'address' => $settings->address ?? '',
                 'phone' => $settings->effectiveContactNumber ?? $settings->phone ?? '',
                 'gstin' => $settings->gstin ?? '',
-                'logo_url' => $settings->logo_url ?? null,
+                'logo_url' => $companyLogo,
             ],
             'party' => [
                 'id' => $party->id,
@@ -688,6 +690,7 @@ class PublicSalesService
 
         $company = Company::find($companyId);
         $settings = CompanySetting::where('company_id', $companyId)->first();
+        $companyLogo = $this->getCompanyLogoForPdf($companyId);
 
         return [
             'company' => [
@@ -697,7 +700,7 @@ class PublicSalesService
                 'address' => $settings->address ?? '',
                 'phone' => $settings->effectiveContactNumber ?? $settings->phone ?? '',
                 'gstin' => $settings->gstin ?? '',
-                'logo_url' => $settings->logo_url ?? null,
+                'logo_url' => $companyLogo,
             ],
             'party' => [
                 'id' => $party->id,
@@ -717,5 +720,62 @@ class PublicSalesService
                 'daily_grand_total' => round($dayGrandTotal, 2),
             ],
         ];
+    }
+
+    /**
+     * Get base64 data URI or local path for company logo to ensure reliable DomPDF rendering.
+     */
+    public function getCompanyLogoForPdf(int $companyId): ?string
+    {
+        $company = Company::find($companyId);
+        $settings = CompanySetting::where('company_id', $companyId)->first();
+
+        $logoPath = $company?->logo_path ?: $settings?->logo_path;
+
+        if ($logoPath) {
+            $disk = Storage::disk('public');
+            $cleanPath = ltrim(str_replace('public/', '', $logoPath), '/');
+
+            // 1. Check in Storage disk('public')
+            if ($disk->exists($cleanPath)) {
+                $fullPath = $disk->path($cleanPath);
+                $mime = @mime_content_type($fullPath) ?: 'image/png';
+                $data = @file_get_contents($fullPath);
+                if ($data !== false && strlen($data) > 0) {
+                    return 'data:'.$mime.';base64,'.base64_encode($data);
+                }
+            }
+
+            // 2. Check storage_path('app/public/...')
+            $storagePath = storage_path('app/public/'.$cleanPath);
+            if (file_exists($storagePath)) {
+                $mime = @mime_content_type($storagePath) ?: 'image/png';
+                $data = @file_get_contents($storagePath);
+                if ($data !== false && strlen($data) > 0) {
+                    return 'data:'.$mime.';base64,'.base64_encode($data);
+                }
+            }
+
+            // 3. Check public_path('storage/...')
+            $publicStoragePath = public_path('storage/'.$cleanPath);
+            if (file_exists($publicStoragePath)) {
+                $mime = @mime_content_type($publicStoragePath) ?: 'image/png';
+                $data = @file_get_contents($publicStoragePath);
+                if ($data !== false && strlen($data) > 0) {
+                    return 'data:'.$mime.';base64,'.base64_encode($data);
+                }
+            }
+        }
+
+        // 4. Fallback to logo_url if accessible
+        $logoUrl = $settings?->logo_url ?: $company?->logo_url;
+        if (! empty($logoUrl)) {
+            if (str_starts_with($logoUrl, 'data:image')) {
+                return $logoUrl;
+            }
+            return $logoUrl;
+        }
+
+        return null;
     }
 }

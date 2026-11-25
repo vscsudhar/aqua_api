@@ -653,16 +653,36 @@ class PublicSalesTest extends TestCase
             ],
         ]);
 
-        // 1. Monthly Statement PDF
+        // 1. Monthly Statement PDF (Without company logo)
         $monthlyPdf = $this->get("/api/v1/public-sales/parties/{$party->id}/statement/pdf?year={$today->year}&month={$today->month}");
         $monthlyPdf->assertStatus(200);
         $this->assertStringContainsString('application/pdf', $monthlyPdf->headers->get('Content-Type'));
         $this->assertStringStartsWith('%PDF-', $monthlyPdf->getContent());
 
-        // 2. Daily Statement PDF
+        // 2. Daily Statement PDF (Without company logo)
         $dailyPdf = $this->get("/api/v1/public-sales/parties/{$party->id}/daily-statement/pdf?date={$saleDate}");
         $dailyPdf->assertStatus(200);
         $this->assertStringContainsString('application/pdf', $dailyPdf->headers->get('Content-Type'));
         $this->assertStringStartsWith('%PDF-', $dailyPdf->getContent());
+
+        // 3. Test With Company Logo
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $dummyImage = \Illuminate\Http\UploadedFile::fake()->image('company_logo.png', 100, 100);
+        $path = $dummyImage->store('logos', 'public');
+        $this->companyA->update(['logo_path' => $path]);
+
+        $service = app(\App\Services\PublicSalesService::class);
+        $base64Logo = $service->getCompanyLogoForPdf($this->companyA->id);
+        $this->assertNotNull($base64Logo);
+        $this->assertStringStartsWith('data:image/', $base64Logo);
+
+        // Verify PDF generates cleanly with logo embedded
+        $monthlyWithLogo = $this->get("/api/v1/public-sales/parties/{$party->id}/statement/pdf?year={$today->year}&month={$today->month}");
+        $monthlyWithLogo->assertStatus(200);
+        $this->assertStringStartsWith('%PDF-', $monthlyWithLogo->getContent());
+
+        $dailyWithLogo = $this->get("/api/v1/public-sales/parties/{$party->id}/daily-statement/pdf?date={$saleDate}");
+        $dailyWithLogo->assertStatus(200);
+        $this->assertStringStartsWith('%PDF-', $dailyWithLogo->getContent());
     }
 }
