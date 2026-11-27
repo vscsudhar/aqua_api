@@ -100,6 +100,14 @@ Route::prefix('v1')->group(function () {
     Route::get('/public/invoices/{id}/html', [InvoiceController::class, 'showHtml']);
     Route::get('/public/invoices/{id}/pdf', [InvoiceController::class, 'downloadPdf']);
 
+    // Signed HTML print routes for Public Sales statements (HMAC-signed + expiring)
+    Route::get('/public-sales/parties/{partyId}/statement/html', [\App\Http\Controllers\Api\PublicSalesController::class, 'showMonthlyStatementHtml'])
+        ->name('public-sales.statement.html')
+        ->middleware('signed');
+    Route::get('/public-sales/parties/{partyId}/daily-statement/html', [\App\Http\Controllers\Api\PublicSalesController::class, 'showDailyStatementHtml'])
+        ->name('public-sales.daily-statement.html')
+        ->middleware('signed');
+
     Route::get('/ping', function () {
         return response()->json([
             'status' => 'success',
@@ -273,6 +281,8 @@ Route::prefix('v1')->group(function () {
             // Statements & Details
             Route::get('/parties/{partyId}/statement', [\App\Http\Controllers\Api\PublicSalesController::class, 'monthlyStatement']);
             Route::get('/parties/{partyId}/daily-details', [\App\Http\Controllers\Api\PublicSalesController::class, 'dailyDetails']);
+            Route::get('/parties/{partyId}/statement/print-url', [\App\Http\Controllers\Api\PublicSalesController::class, 'monthlyStatementPrintUrl']);
+            Route::get('/parties/{partyId}/daily-statement/print-url', [\App\Http\Controllers\Api\PublicSalesController::class, 'dailyStatementPrintUrl']);
             Route::get('/parties/{partyId}/statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportMonthlyStatementPdf']);
             Route::get('/parties/{partyId}/daily-statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportDailyStatementPdf']);
         });

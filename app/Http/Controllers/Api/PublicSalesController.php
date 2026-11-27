@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 
 class PublicSalesController extends Controller
@@ -392,5 +393,136 @@ class PublicSalesController extends Controller
         );
 
         return $pdf->download($fileName);
+    }
+
+    // ==========================================
+    // 6. Secure Signed HTML Printing Endpoints
+    // ==========================================
+
+    public function monthlyStatementPrintUrl(Request $request, int $partyId): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+        $now = Carbon::now('Asia/Kolkata');
+
+        $validated = $request->validate([
+            'year' => 'nullable|numeric|min:2000|max:2100',
+            'month' => 'nullable|numeric|min:1|max:12',
+            'auto_print' => 'nullable|boolean',
+        ]);
+
+        // Enforce multi-company party ownership before issuing signed URL
+        PublicParty::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->findOrFail($partyId);
+
+        $year = (int) ($validated['year'] ?? $now->year);
+        $month = (int) ($validated['month'] ?? $now->month);
+        $autoPrint = $request->boolean('auto_print', true) ? 1 : 0;
+
+        $signedUrl = URL::temporarySignedRoute(
+            'public-sales.statement.html',
+            now()->addMinutes(10),
+            [
+                'partyId' => $partyId,
+                'company_id' => $companyId,
+                'year' => $year,
+                'month' => $month,
+                'auto_print' => $autoPrint,
+            ]
+        );
+
+        return $this->successResponse(['url' => $signedUrl], 'Signed statement print URL generated successfully.');
+    }
+
+    public function dailyStatementPrintUrl(Request $request, int $partyId): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $validated = $request->validate([
+            'date' => 'nullable|date_format:Y-m-d',
+            'auto_print' => 'nullable|boolean',
+        ]);
+
+        // Enforce multi-company party ownership before issuing signed URL
+        PublicParty::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->findOrFail($partyId);
+
+        $date = $validated['date'] ?? Carbon::today('Asia/Kolkata')->toDateString();
+        $autoPrint = $request->boolean('auto_print', true) ? 1 : 0;
+
+        $signedUrl = URL::temporarySignedRoute(
+            'public-sales.daily-statement.html',
+            now()->addMinutes(10),
+            [
+                'partyId' => $partyId,
+                'company_id' => $companyId,
+                'date' => $date,
+                'auto_print' => $autoPrint,
+            ]
+        );
+
+        return $this->successResponse(['url' => $signedUrl], 'Signed daily statement print URL generated successfully.');
+    }
+
+    public function showMonthlyStatementHtml(Request $request, int $partyId): Response
+    {
+        $companyId = (int) $request->query('company_id');
+        if ($companyId <= 0) {
+            abort(403, 'Invalid company context.');
+        }
+
+        $now = Carbon::now('Asia/Kolkata');
+        $year = max(2000, min(2100, (int) $request->query('year', $now->year)));
+        $month = max(1, min(12, (int) $request->query('month', $now->month)));
+        $autoPrint = $request->boolean('auto_print', true);
+
+        $statement = $this->service->getPartyMonthlyStatement($companyId, $partyId, $year, $month);
+        $companyLogoPath = $this->service->getCompanyLogoFilePath($companyId);
+
+        $html = view('reports.public_sales_monthly_statement_html', [
+            'statement' => $statement,
+            'companyLogoPath' => $companyLogoPath,
+            'companyLogo' => $companyLogoPath,
+            'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
+            'autoPrint' => $autoPrint,
+        ])->render();
+
+        return response($html, 200)
+            ->header('Content-Type', 'text/html; charset=UTF-8')
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
+    }
+
+    public function showDailyStatementHtml(Request $request, int $partyId): Response
+    {
+        $companyId = (int) $request->query('company_id');
+        if ($companyId <= 0) {
+            abort(403, 'Invalid company context.');
+        }
+
+        $date = $request->query('date', Carbon::today('Asia/Kolkata')->toDateString());
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            abort(422, 'Invalid date format.');
+        }
+        $autoPrint = $request->boolean('auto_print', true);
+
+        $details = $this->service->getPartyDailyDetails($companyId, $partyId, $date);
+        $companyLogoPath = $this->service->getCompanyLogoFilePath($companyId);
+
+        $html = view('reports.public_sales_daily_statement_html', [
+            'details' => $details,
+            'companyLogoPath' => $companyLogoPath,
+            'companyLogo' => $companyLogoPath,
+            'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
+            'autoPrint' => $autoPrint,
+        ])->render();
+
+        return response($html, 200)
+            ->header('Content-Type', 'text/html; charset=UTF-8')
+            ->header('Cache-Control', 'no-cache, no-store, must-revalidate')
+            ->header('Pragma', 'no-cache')
+            ->header('Expires', '0');
     }
 }

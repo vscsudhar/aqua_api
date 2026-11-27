@@ -694,4 +694,94 @@ class PublicSalesTest extends TestCase
         $dailyWithLogo->assertStatus(200);
         $this->assertStringStartsWith('%PDF-', $dailyWithLogo->getContent());
     }
+
+    /**
+     * Test 12: Signed HTML Statement Printing & Security (Monthly & Daily).
+     */
+    public function test_monthly_and_daily_html_statement_printing_and_security(): void
+    {
+        $partyB = PublicParty::create([
+            'company_id' => $this->companyB->id,
+            'party_name' => 'HTML Print Party B',
+        ]);
+
+        Sanctum::actingAs($this->userA);
+
+        $partyA = PublicParty::create([
+            'company_id' => $this->companyA->id,
+            'party_name' => 'HTML Print Party A',
+            'contact_number' => '9876543210',
+        ]);
+
+        // 1. Cross-company isolation: Company A cannot request print-url for Company B's party
+        $crossCompanyRes = $this->getJson("/api/v1/public-sales/parties/{$partyB->id}/statement/print-url?year=2026&month=11");
+        $crossCompanyRes->assertStatus(404);
+
+        // 2. Unsigned / tampered HTML URL must be rejected with 403
+        $unsignedMonthly = $this->get("/api/v1/public-sales/parties/{$partyA->id}/statement/html?company_id={$this->companyA->id}&year=2026&month=11");
+        $unsignedMonthly->assertStatus(403);
+
+        $unsignedDaily = $this->get("/api/v1/public-sales/parties/{$partyA->id}/daily-statement/html?company_id={$this->companyA->id}&date=2026-11-01");
+        $unsignedDaily->assertStatus(403);
+
+        // 3. Empty statement renders cleanly
+        $emptyUrlRes = $this->getJson("/api/v1/public-sales/parties/{$partyA->id}/statement/print-url?year=2025&month=01&auto_print=1");
+        $emptyUrlRes->assertStatus(200)->assertJsonStructure(['data' => ['url']]);
+        $emptyHtml = $this->get($emptyUrlRes->json('data.url'));
+        $emptyHtml->assertStatus(200);
+        $emptyHtml->assertSee('No public sales entries recorded for HTML Print Party A');
+        $emptyHtml->assertSee('window.print()');
+
+        // 4. Multiple entries & large multi-page dataset + logo
+        \Illuminate\Support\Facades\Storage::fake('public');
+        $dummyImage = \Illuminate\Http\UploadedFile::fake()->image('company_logo.png', 100, 100);
+        $path = $dummyImage->store('logos', 'public');
+        $this->companyA->update(['logo_path' => $path]);
+
+        for ($day = 1; $day <= 20; $day++) {
+            $dateStr = sprintf('2026-11-%02d', $day);
+            $this->postJson('/api/v1/public-sales', [
+                'party_id' => $partyA->id,
+                'sale_date' => $dateStr,
+                'cash_amount' => 100.00,
+                'upi_amount' => 50.00,
+                'items' => [
+                    ['product_id' => $this->productWithoutInvoice->id, 'rate' => 20.00, 'quantity' => 5, 'amount' => 100.00],
+                ],
+            ])->assertStatus(201);
+        }
+
+        // Single-day multiple entries
+        $this->postJson('/api/v1/public-sales', [
+            'party_id' => $partyA->id,
+            'sale_date' => '2026-11-01',
+            'cash_amount' => 250.00,
+            'upi_amount' => 150.00,
+            'items' => [
+                ['product_id' => $this->productWithoutInvoice->id, 'rate' => 20.00, 'quantity' => 10, 'amount' => 200.00],
+            ],
+        ])->assertStatus(201);
+
+        // Monthly HTML statement
+        $monthlyUrlRes = $this->getJson("/api/v1/public-sales/parties/{$partyA->id}/statement/print-url?year=2026&month=11&auto_print=1");
+        $monthlyUrlRes->assertStatus(200);
+        $monthlyHtml = $this->get($monthlyUrlRes->json('data.url'));
+        $monthlyHtml->assertStatus(200);
+        $monthlyHtml->assertSee('PUBLIC SALES STATEMENT');
+        $monthlyHtml->assertSee('HTML Print Party A');
+        $monthlyHtml->assertSee('MONTHLY TOTAL');
+        $monthlyHtml->assertSee('@media print');
+        $monthlyHtml->assertSee('data:image/');
+
+        // Daily HTML statement (multiple entries on 2026-11-01)
+        $dailyUrlRes = $this->getJson("/api/v1/public-sales/parties/{$partyA->id}/daily-statement/print-url?date=2026-11-01&auto_print=1");
+        $dailyUrlRes->assertStatus(200);
+        $dailyHtml = $this->get($dailyUrlRes->json('data.url'));
+        $dailyHtml->assertStatus(200);
+        $dailyHtml->assertSee('DAILY SALES DETAILS');
+        $dailyHtml->assertSee('Entry #1');
+        $dailyHtml->assertSee('Entry #2');
+        $dailyHtml->assertSee('DAILY TOTAL SUMMARY');
+        $dailyHtml->assertSee('data:image/');
+    }
 }
