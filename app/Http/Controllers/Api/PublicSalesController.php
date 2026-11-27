@@ -351,7 +351,7 @@ class PublicSalesController extends Controller
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
         ])->setPaper('a4', 'landscape')
           ->setOption([
-              'isRemoteEnabled' => true,
+              'isRemoteEnabled' => false,
               'isHtml5ParserEnabled' => true,
               'chroot' => [public_path(), base_path(), storage_path()],
           ]);
@@ -381,7 +381,7 @@ class PublicSalesController extends Controller
             'generatedAt' => Carbon::now('Asia/Kolkata')->format('d M Y, h:i A'),
         ])->setPaper('a4', 'portrait')
           ->setOption([
-              'isRemoteEnabled' => true,
+              'isRemoteEnabled' => false,
               'isHtml5ParserEnabled' => true,
               'chroot' => [public_path(), base_path(), storage_path()],
           ]);

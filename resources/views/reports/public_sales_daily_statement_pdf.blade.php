@@ -8,20 +8,8 @@
             size: A4 portrait;
             margin: 10mm 12mm;
         }
-        @font-face {
-            font-family: 'Noto Sans';
-            font-style: normal;
-            font-weight: normal;
-            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Regular.ttf')) }}') format('truetype');
-        }
-        @font-face {
-            font-family: 'Noto Sans';
-            font-style: normal;
-            font-weight: bold;
-            src: url('{{ str_replace('\\', '/', public_path('fonts/NotoSans-Bold.ttf')) }}') format('truetype');
-        }
         body {
-            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
+            font-family: 'DejaVu Sans', sans-serif;
             font-size: 8.5pt;
             color: #1e293b;
             line-height: 1.4;
@@ -29,7 +17,7 @@
             padding: 6px 10px;
         }
         table, th, td, div, span, p {
-            font-family: 'Noto Sans', 'DejaVu Sans', sans-serif;
+            font-family: 'DejaVu Sans', sans-serif;
         }
         .header {
             border-bottom: 2px solid #059669;
@@ -136,7 +124,8 @@
         $finalLogo = null;
         $candidateLogo = !empty($companyLogoPath) ? $companyLogoPath : (!empty($companyLogo) ? $companyLogo : null);
         if (!empty($candidateLogo) && file_exists($candidateLogo)) {
-            $finalLogo = $candidateLogo;
+            $mime = @mime_content_type($candidateLogo) ?: 'image/png';
+            $finalLogo = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($candidateLogo));
         }
     @endphp
     <div class="header">
