@@ -287,5 +287,14 @@ class ExpenseManagementTest extends TestCase
         $this->assertCount(10, $page1->json('data'));
         $this->assertEquals(24, $page1->json('meta.total'));
         $this->assertEquals(3, $page1->json('meta.last_page'));
+
+        // Bulk delete check (only Company A expenses deleted, soft-deleted)
+        $idsToDelete = collect($page1->json('data'))->take(3)->pluck('id')->all();
+        $bulkRes = $this->postJson('/api/v1/expenses/bulk-delete', ['ids' => $idsToDelete])
+            ->assertStatus(200);
+        $this->assertEquals(3, (int) $bulkRes->json('data.deleted_count'));
+        foreach ($idsToDelete as $delId) {
+            $this->assertSoftDeleted('expenses', ['id' => $delId]);
+        }
     }
 }

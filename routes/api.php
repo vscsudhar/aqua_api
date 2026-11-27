@@ -298,6 +298,7 @@ Route::prefix('v1')->group(function () {
         Route::prefix('expenses')->group(function () {
             Route::get('/summary', [\App\Http\Controllers\Api\ExpenseController::class, 'summary']);
             Route::get('/report', [\App\Http\Controllers\Api\ExpenseController::class, 'report']);
+            Route::post('/bulk-delete', [\App\Http\Controllers\Api\ExpenseController::class, 'bulkDestroy']);
             Route::get('/', [\App\Http\Controllers\Api\ExpenseController::class, 'index']);
             Route::post('/', [\App\Http\Controllers\Api\ExpenseController::class, 'store']);
             Route::get('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'show'])->where('id', '[0-9]+');

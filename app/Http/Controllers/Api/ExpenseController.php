@@ -226,6 +226,35 @@ class ExpenseController extends Controller
         return $this->successResponse(null, 'Expense deleted successfully.');
     }
 
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $companyId = $this->resolveCompanyId($request);
+
+        $validated = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer',
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['ids'])));
+        $expenses = Expense::withoutGlobalScope(\App\Scopes\CompanyScope::class)
+            ->where('company_id', $companyId)
+            ->whereIn('id', $ids)
+            ->get();
+
+        $deletedCount = 0;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($expenses, $request, &$deletedCount) {
+            foreach ($expenses as $expense) {
+                $this->service->deleteExpense($expense, $request->user());
+                $deletedCount++;
+            }
+        });
+
+        return $this->successResponse(
+            ['deleted_count' => $deletedCount],
+            "{$deletedCount} expense(s) deleted successfully."
+        );
+    }
+
     // ==========================================
     // Private Attachment Download / Viewing
     // ==========================================
