@@ -286,6 +286,26 @@ Route::prefix('v1')->group(function () {
             Route::get('/parties/{partyId}/statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportMonthlyStatementPdf']);
             Route::get('/parties/{partyId}/daily-statement/pdf', [\App\Http\Controllers\Api\PublicSalesController::class, 'exportDailyStatementPdf']);
         });
+
+        // Expense Management Module
+        Route::prefix('expense-categories')->group(function () {
+            Route::get('/', [\App\Http\Controllers\Api\ExpenseController::class, 'categoriesIndex']);
+            Route::post('/', [\App\Http\Controllers\Api\ExpenseController::class, 'categoriesStore']);
+            Route::put('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'categoriesUpdate'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'categoriesDestroy'])->where('id', '[0-9]+');
+        });
+
+        Route::prefix('expenses')->group(function () {
+            Route::get('/summary', [\App\Http\Controllers\Api\ExpenseController::class, 'summary']);
+            Route::get('/report', [\App\Http\Controllers\Api\ExpenseController::class, 'report']);
+            Route::get('/', [\App\Http\Controllers\Api\ExpenseController::class, 'index']);
+            Route::post('/', [\App\Http\Controllers\Api\ExpenseController::class, 'store']);
+            Route::get('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'show'])->where('id', '[0-9]+');
+            Route::put('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'update'])->where('id', '[0-9]+');
+            Route::post('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'update'])->where('id', '[0-9]+');
+            Route::delete('/{id}', [\App\Http\Controllers\Api\ExpenseController::class, 'destroy'])->where('id', '[0-9]+');
+            Route::get('/{id}/attachment', [\App\Http\Controllers\Api\ExpenseController::class, 'downloadAttachment'])->where('id', '[0-9]+');
+        });
         // use Illuminate\Support\Facades\Route;
 
 Route::get('/backup-check', function () {

@@ -19,20 +19,6 @@ class ProductRequest extends FormRequest
 
         $user = $this->user();
         $companyId = $user?->company_id;
-        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            $companyId = $this->header('X-Company-Id') ?: $this->input('company_id') ?: $user->company_id;
-        } elseif ($user && $user->company_id) {
-            $requested = $this->header('X-Company-Id') ?: $this->input('company_id');
-            if ($requested && (int) $requested !== (int) $user->company_id) {
-                $isOwned = \App\Models\Company::withoutGlobalScopes()
-                    ->where('id', $requested)
-                    ->where('owner_company_id', $user->company_id)
-                    ->exists();
-                if ($isOwned) {
-                    $companyId = (int) $requested;
-                }
-            }
-        }
 
         return [
             'name' => ['required', 'string', 'max:255'],

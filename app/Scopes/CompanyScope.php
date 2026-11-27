@@ -21,36 +21,14 @@ class CompanyScope implements Scope
             return;
         }
 
-        // Super Admin access: can filter by X-Company-Id or company_id if provided
+        // Super Admin access: unrestricted across companies (no header-based context switching)
         if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            $targetCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id') ?: $user->company_id;
-            if ($targetCompanyId) {
-                $builder->where($model->getTable() . '.company_id', $targetCompanyId);
-            }
             return;
         }
 
-        // Non-super-admin tenant users
+        // Tenant users: strictly scoped to their authenticated company_id
         $companyId = $user->company_id;
         if (! $companyId) {
-            $builder->whereRaw('1 = 0');
-            return;
-        }
-
-        // Validate client-supplied company_id: only allowed if owned/onboarded client company
-        $requestedCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id');
-        if ($requestedCompanyId && (int)$requestedCompanyId !== (int)$companyId) {
-            $isOwned = \App\Models\Company::withoutGlobalScopes()
-                ->where('id', $requestedCompanyId)
-                ->where('owner_company_id', $companyId)
-                ->exists();
-
-            if ($isOwned) {
-                $builder->where($model->getTable() . '.company_id', $requestedCompanyId);
-                return;
-            }
-
-            // Unauthorized cross-company attempt: block query results completely
             $builder->whereRaw('1 = 0');
             return;
         }

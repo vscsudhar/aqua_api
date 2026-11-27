@@ -23,31 +23,11 @@ class ProductController extends Controller
     protected function resolveActiveCompanyId(Request $request): ?int
     {
         $user = $request->user();
-        if (! $user) {
+        if (! $user || ! $user->company_id) {
             return null;
         }
 
-        if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            $target = $request->header('X-Company-Id') ?: $request->input('company_id') ?: $user->company_id;
-            return $target ? (int) $target : null;
-        }
-
-        $homeCompanyId = (int) $user->company_id;
-        $requested = $request->header('X-Company-Id') ?: $request->input('company_id');
-        if ($requested && (int) $requested !== $homeCompanyId) {
-            $isOwned = \App\Models\Company::withoutGlobalScopes()
-                ->where('id', $requested)
-                ->where('owner_company_id', $homeCompanyId)
-                ->exists();
-
-            if ($isOwned) {
-                return (int) $requested;
-            }
-
-            return -1; // Unauthorized cross-company attempt
-        }
-
-        return $homeCompanyId;
+        return (int) $user->company_id;
     }
 
     public function index(Request $request): JsonResponse

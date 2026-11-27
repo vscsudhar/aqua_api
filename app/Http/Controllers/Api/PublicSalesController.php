@@ -32,24 +32,8 @@ class PublicSalesController extends Controller
     protected function resolveCompanyId(Request $request): int
     {
         $user = $request->user() ?: Auth::user();
-        if ($user && method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-            return (int) ($request->header('X-Company-Id') ?: $request->input('company_id') ?: $user->company_id ?: 1);
-        }
 
-        $homeId = (int) ($user?->company_id ?: 1);
-        $requested = $request->header('X-Company-Id') ?: $request->input('company_id');
-        if ($requested && (int) $requested !== $homeId) {
-            $isOwned = Company::withoutGlobalScopes()
-                ->where('id', $requested)
-                ->where('owner_company_id', $homeId)
-                ->exists();
-
-            if ($isOwned) {
-                return (int) $requested;
-            }
-        }
-
-        return $homeId;
+        return (int) ($user?->company_id ?: 1);
     }
 
     // ==========================================

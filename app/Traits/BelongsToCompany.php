@@ -23,30 +23,15 @@ trait BelongsToCompany
             }
 
             if (method_exists($user, 'isSuperAdmin') && $user->isSuperAdmin()) {
-                $targetId = request()->header('X-Company-Id') ?: request()->input('company_id') ?: $model->company_id ?: $user->company_id;
+                $targetId = $model->company_id ?: $user->company_id;
                 if ($targetId) {
                     $model->company_id = $targetId;
                 }
                 return;
             }
 
-            // Tenant user
-            $companyId = $user->company_id;
-            $requestedCompanyId = request()->header('X-Company-Id') ?: request()->input('company_id');
-            if ($requestedCompanyId && (int)$requestedCompanyId !== (int)$companyId) {
-                $isOwned = Company::withoutGlobalScopes()
-                    ->where('id', $requestedCompanyId)
-                    ->where('owner_company_id', $companyId)
-                    ->exists();
-
-                if ($isOwned) {
-                    $model->company_id = $requestedCompanyId;
-                    return;
-                }
-            }
-
-            // Always enforce authorized company_id
-            $model->company_id = $companyId;
+            // Always enforce authenticated tenant user's company_id
+            $model->company_id = $user->company_id;
         });
 
         static::updating(function ($model) {
